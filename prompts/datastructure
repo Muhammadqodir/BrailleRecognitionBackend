@@ -1,0 +1,4 @@
+Now we need to relize api for mobile app.
+Key entities:
+  Users: id, name, email, password, timestamps(in app users also can able to sign in or login with apple or google, so realize tables or extracolumns for that)
+  Translations: id, user_id, lang, ogirin_image, marked_image, result_str, result_json, timestamps
