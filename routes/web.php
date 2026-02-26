@@ -5,11 +5,11 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
     return view('welcome');
-});
+})->name('home');
 
 Route::get('/privacy-policy', function () {
     return view('privacy');
-});
+})->name('privacy.policy');
 
 Route::get('/remove-profile', [ProfileDeletionController::class, 'showForm'])->name('profile.deletion.form');
 Route::post('/remove-profile', [ProfileDeletionController::class, 'submitRequest'])->name('profile.deletion.submit');
