@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Cache;
 
 class AuthController extends Controller
 {
@@ -261,33 +262,56 @@ class AuthController extends Controller
      * @throws \RuntimeException|\Firebase\JWT\ExpiredException|\Firebase\JWT\SignatureInvalidException
      * @return array<string, mixed>
      */
-    private function verifyAppleIdentityToken(string $identityToken): array
+    private function verifyAppleIdentityToken(string $identityToken, ?string $rawNonce = null): array
     {
-        $response = Http::timeout(5)->get('https://appleid.apple.com/auth/keys');
+        $jwks = Cache::remember('apple_jwks', 3600, function () {
+            $response = Http::timeout(5)->get('https://appleid.apple.com/auth/keys');
 
-        if (! $response->successful()) {
-            throw new \RuntimeException('Could not fetch Apple public keys.');
+            if (!$response->successful()) {
+                throw new \RuntimeException('Could not fetch Apple public keys.');
+            }
+
+            return $response->json();
+        });
+
+        $keySet = JWK::parseKeySet($jwks);
+
+        try {
+            $decoded = (array) JWT::decode($identityToken, $keySet);
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('Invalid Apple token.');
         }
 
-        $keySet = JWK::parseKeySet($response->json());
-
-        // Verifies signature, exp, and nbf automatically
-        $decoded = (array) JWT::decode($identityToken, $keySet);
-
+        // ISS
         if (($decoded['iss'] ?? '') !== 'https://appleid.apple.com') {
             throw new \RuntimeException('Apple token issuer mismatch.');
         }
 
-        // Audience must match your app bundle ID (APPLE_CLIENT_ID)
+        // AUD
         $expectedAud = config('services.apple.client_id');
         $aud = is_array($decoded['aud']) ? $decoded['aud'] : [$decoded['aud']];
 
-        if ($expectedAud && ! in_array($expectedAud, $aud, true)) {
+        if ($expectedAud && !in_array($expectedAud, $aud, true)) {
             throw new \RuntimeException('Apple token audience mismatch.');
         }
 
+        // SUB
         if (empty($decoded['sub'])) {
-            throw new \RuntimeException('Apple token missing sub claim.');
+            throw new \RuntimeException('Apple token missing sub.');
+        }
+
+        // NONCE (optional)
+        if ($rawNonce) {
+            $expectedNonce = hash('sha256', $rawNonce);
+
+            if (($decoded['nonce'] ?? null) !== $expectedNonce) {
+                throw new \RuntimeException('Invalid nonce.');
+            }
+        }
+
+        // EMAIL VERIFIED
+        if (isset($decoded['email_verified']) && $decoded['email_verified'] !== true) {
+            throw new \RuntimeException('Email not verified.');
         }
 
         return $decoded;
