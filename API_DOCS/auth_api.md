@@ -1,6 +1,6 @@
 # Auth API Documentation
 
-Base URL: `https://your-domain.com/api`
+Base URL: `https://braillerecognition.alfocus.uz/api`
 
 All responses are JSON. Protected routes require the header:
 ```

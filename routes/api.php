@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AppleNotificationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -28,3 +29,22 @@ Route::prefix('auth')->group(function () {
         Route::post('/logout', [AuthController::class, 'logout']);
     });
 });
+
+/*
+|--------------------------------------------------------------------------
+| Apple Server-to-Server Notifications
+|--------------------------------------------------------------------------
+|
+| Apple posts signed JWTs here when users change email relay preferences,
+| revoke app consent, or permanently delete their Apple ID.
+|
+| Register this URL in App Store Connect → your app → Sign in with Apple
+| → Server to Server Notification Endpoint:
+|
+|   https://your-domain.com/api/apple/notifications
+|
+| Requirements: TLS 1.2+, publicly reachable, no auth header required.
+|
+*/
+Route::post('/apple/notifications', [AppleNotificationController::class, 'handle'])
+    ->name('apple.notifications');

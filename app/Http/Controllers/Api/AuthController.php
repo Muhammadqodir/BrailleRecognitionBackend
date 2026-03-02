@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use Firebase\JWT\JWT;
+use Firebase\JWT\JWK;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -142,42 +145,51 @@ class AuthController extends Controller
     /**
      * Sign in / register with Apple (identity token flow).
      *
-     * Flutter sends the Apple identity token obtained from sign_in_with_apple package.
-     * The backend decodes the JWT and verifies the audience.
+     * Flow: Flutter → Apple SDK → identityToken → POST here → verify → login
+     *
+     * The Flutter app gets a signed identityToken (RS256 JWT) directly from
+     * Apple via the sign_in_with_apple package and sends it here.
+     * No OAuth redirect or client secret is required for this flow.
      *
      * POST /api/auth/apple
+     * Body: { identity_token, name?, email? }
      */
     public function appleSignIn(Request $request): JsonResponse
     {
         $request->validate([
             'identity_token' => ['required', 'string'],
-            'user_id'        => ['required', 'string'], // Apple's user identifier (stable)
-            'name'           => ['nullable', 'string'], // only sent on first sign-in
-            'email'          => ['nullable', 'email'],  // only sent on first sign-in
+            'name'           => ['nullable', 'string'], // only provided on first sign-in
+            'email'          => ['nullable', 'email'],  // only provided on first sign-in
         ]);
 
-        $applePayload = $this->verifyAppleToken($request->identity_token, $request->user_id);
-
-        if (! $applePayload) {
-            return response()->json(['message' => 'Invalid Apple token.'], 401);
+        // Verify RS256 signature against Apple's public JWKS and extract claims
+        try {
+            $applePayload = $this->verifyAppleIdentityToken($request->identity_token);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Invalid Apple identity token: ' . $e->getMessage()], 401);
         }
 
-        // Apple only sends email on the *first* sign-in; afterwards use stored value
-        $email = $applePayload['email'] ?? $request->email;
+        // `sub` in the verified JWT is the stable Apple user identifier
+        $appleUserId = $applePayload['sub'];
 
-        $user = User::where('apple_id', $request->user_id)->first();
+        // Apple only includes email on the very first sign-in
+        $email = $applePayload['email'] ?? $request->input('email');
 
-        if (! $user && $email) {
-            $user = User::where('email', $email)->first();
-        }
+        // Look up existing user by apple_id, fall back to email match
+        $user = User::where('apple_id', $appleUserId)->first()
+            ?? ($email ? User::where('email', $email)->first() : null);
 
         if ($user) {
-            $user->update(['apple_id' => $request->user_id]);
+            // Link apple_id if the account was found by email
+            if (! $user->apple_id) {
+                $user->update(['apple_id' => $appleUserId]);
+            }
         } else {
+            // New user — create account
             $user = User::create([
-                'name'              => $request->name ?? 'Apple User',
-                'email'             => $email ?? $request->user_id . '@apple.placeholder',
-                'apple_id'          => $request->user_id,
+                'name'              => $request->input('name') ?? 'Apple User',
+                'email'             => $email ?? ($appleUserId . '@privaterelay.appleid.com'),
+                'apple_id'          => $appleUserId,
                 'auth_provider'     => 'apple',
                 'email_verified_at' => now(),
             ]);
@@ -238,39 +250,46 @@ class AuthController extends Controller
     }
 
     /**
-     * Verify an Apple identity token (JWT).
-     * Decodes without full signature verification here — for production you MUST
-     * fetch Apple's public keys and verify the RS256 signature. You can use the
-     * `lcobucci/jwt` package or `firebase/php-jwt` for that.
+     * Verify an Apple identityToken by:
+     *  1. Fetching Apple's public JWKS from https://appleid.apple.com/auth/keys
+     *  2. Verifying the RS256 signature with firebase/php-jwt
+     *  3. Asserting issuer  = https://appleid.apple.com
+     *  4. Asserting audience = APPLE_CLIENT_ID (your app bundle ID)
      *
-     * Returns the payload array on success, or null on failure.
+     * JWT::decode() also automatically rejects expired tokens (exp claim).
+     *
+     * @throws \RuntimeException|\Firebase\JWT\ExpiredException|\Firebase\JWT\SignatureInvalidException
+     * @return array<string, mixed>
      */
-    private function verifyAppleToken(string $identityToken, string $userId): ?array
+    private function verifyAppleIdentityToken(string $identityToken): array
     {
-        $parts = explode('.', $identityToken);
+        $response = Http::timeout(5)->get('https://appleid.apple.com/auth/keys');
 
-        if (count($parts) !== 3) {
-            return null;
+        if (! $response->successful()) {
+            throw new \RuntimeException('Could not fetch Apple public keys.');
         }
 
-        $payload = json_decode(base64_decode(str_pad(
-            strtr($parts[1], '-_', '+/'),
-            strlen($parts[1]) % 4 === 0 ? strlen($parts[1]) : strlen($parts[1]) + (4 - strlen($parts[1]) % 4),
-            '='
-        )), true);
+        $keySet = JWK::parseKeySet($response->json());
 
-        if (empty($payload['sub']) || $payload['sub'] !== $userId) {
-            return null;
+        // Verifies signature, exp, and nbf automatically
+        $decoded = (array) JWT::decode($identityToken, $keySet);
+
+        if (($decoded['iss'] ?? '') !== 'https://appleid.apple.com') {
+            throw new \RuntimeException('Apple token issuer mismatch.');
         }
 
-        if ($payload['iss'] !== 'https://appleid.apple.com') {
-            return null;
+        // Audience must match your app bundle ID (APPLE_CLIENT_ID)
+        $expectedAud = config('services.apple.client_id');
+        $aud = is_array($decoded['aud']) ? $decoded['aud'] : [$decoded['aud']];
+
+        if ($expectedAud && ! in_array($expectedAud, $aud, true)) {
+            throw new \RuntimeException('Apple token audience mismatch.');
         }
 
-        if (isset($payload['exp']) && $payload['exp'] < time()) {
-            return null;
+        if (empty($decoded['sub'])) {
+            throw new \RuntimeException('Apple token missing sub claim.');
         }
 
-        return $payload;
+        return $decoded;
     }
 }

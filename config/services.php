@@ -41,10 +41,9 @@ return [
         'redirect'      => env('GOOGLE_REDIRECT_URI', 'https://your-app.com/auth/google/callback'),
     ],
 
+    // Apple Sign-In (mobile identity token flow — no OAuth redirect needed)
     'apple' => [
-        'client_id'     => env('APPLE_CLIENT_ID'),     // your Apple Services ID
-        'client_secret' => env('APPLE_CLIENT_SECRET'), // JWT you generate with your key
-        'redirect'      => env('APPLE_REDIRECT_URI', 'https://your-app.com/auth/apple/callback'),
+        'client_id' => env('APPLE_CLIENT_ID'), // App bundle ID, e.g. uz.mq.braille
     ],
 
 ];
