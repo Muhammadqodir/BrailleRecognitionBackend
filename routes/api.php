@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AppleNotificationController;
+use App\Http\Controllers\Api\AvailableLanguageController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -48,3 +49,10 @@ Route::prefix('auth')->group(function () {
 */
 Route::post('/apple/notifications', [AppleNotificationController::class, 'handle'])
     ->name('apple.notifications');
+
+/*
+|--------------------------------------------------------------------------
+| Available Languages
+|--------------------------------------------------------------------------
+*/
+Route::get('/languages', [AvailableLanguageController::class, 'index']);
