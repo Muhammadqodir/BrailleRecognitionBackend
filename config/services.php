@@ -46,4 +46,14 @@ return [
         'client_id' => env('APPLE_CLIENT_ID'), // App bundle ID, e.g. uz.mq.braille
     ],
 
+
+    'revenuecat' => [
+        // Secret (sk_) key — server-side only. The app ships the public key.
+        'secret_key' => env('REVENUECAT_SECRET_KEY', ''),
+        'entitlement' => env('REVENUECAT_ENTITLEMENT', 'Premium'),
+        // Sent by RevenueCat as the bare Authorization header value, with no
+        // "Bearer " prefix. Getting that wrong silently drops every webhook.
+        'webhook_auth' => env('REVENUECAT_WEBHOOK_AUTH', ''),
+    ],
+
 ];
