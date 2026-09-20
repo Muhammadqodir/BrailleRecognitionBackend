@@ -63,6 +63,34 @@ return [
             ]) : [],
         ],
 
+        /*
+        |----------------------------------------------------------------------
+        | Legacy read-only connection
+        |----------------------------------------------------------------------
+        |
+        | The plain-PHP backend's `braille` database. Used only by
+        | `braille:import-legacy` to carry active accounts and their history
+        | into this app. Nothing in the request path should ever read from it,
+        | and nothing should ever write to it.
+        |
+        */
+        'legacy' => [
+            // Driver is configurable so the import can be exercised against a
+            // throwaway fixture database instead of production.
+            'driver' => env('LEGACY_DB_DRIVER', 'mysql'),
+            'host' => env('LEGACY_DB_HOST', '127.0.0.1'),
+            'port' => env('LEGACY_DB_PORT', '3306'),
+            'database' => env('LEGACY_DB_DATABASE', 'braille'),
+            'username' => env('LEGACY_DB_USERNAME', 'braille'),
+            'password' => env('LEGACY_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_general_ci',
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'strict' => false,
+            'engine' => null,
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),
