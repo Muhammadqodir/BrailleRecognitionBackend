@@ -100,13 +100,20 @@ class SocialIdentity
             throw new RuntimeException('Apple sign-in is not configured.');
         }
 
-        // Apple rotates these. Cached so their availability does not sit in
-        // front of ours, but refetched once if a token names a key we have
-        // not seen — which is what a rotation looks like from here.
-        $claims = self::decodeWithAppleKeys($idToken, false)
-            ?? self::decodeWithAppleKeys($idToken, true);
+        // Apple rate-limits this endpoint, so it is cached and refetched only
+        // when a token names a key we have not seen — which is what a rotation
+        // looks like from here. An earlier version refetched on any failed
+        // verification, so every junk token cost two requests to Apple and
+        // tripped the limit, which then looked like Apple being unreachable.
+        $keys = self::appleKeys(false);
+        $kid = self::keyIdOf($idToken);
+        if ($kid !== null && !isset($keys[$kid])) {
+            $keys = self::appleKeys(true);
+        }
 
-        if ($claims === null) {
+        try {
+            $claims = (array) JWT::decode($idToken, $keys);
+        } catch (\Throwable $e) {
             throw new RuntimeException('Apple rejected the sign-in token.');
         }
 
@@ -134,15 +141,29 @@ class SocialIdentity
         );
     }
 
-    /** @return array<string,mixed>|null null when the token does not verify. */
-    private static function decodeWithAppleKeys(string $idToken, bool $fresh): ?array
+    /** The `kid` a token asks to be verified with, or null if unreadable. */
+    private static function keyIdOf(string $idToken): ?string
     {
-        $key = 'apple_jwks';
-        if ($fresh) {
-            Cache::forget($key);
+        $head = explode('.', $idToken)[0] ?? '';
+        $json = base64_decode(strtr($head, '-_', '+/'), false);
+        if ($json === false) {
+            return null;
         }
 
-        $jwks = Cache::remember($key, now()->addDay(), function (): array {
+        $decoded = json_decode($json, true);
+
+        return is_array($decoded) && isset($decoded['kid']) ? (string) $decoded['kid'] : null;
+    }
+
+    /** @return array<string,\Firebase\JWT\Key> */
+    private static function appleKeys(bool $fresh): array
+    {
+        $cacheKey = 'apple_jwks';
+        if ($fresh) {
+            Cache::forget($cacheKey);
+        }
+
+        $jwks = Cache::remember($cacheKey, now()->addDay(), function (): array {
             $response = Http::timeout(10)->get('https://appleid.apple.com/auth/keys');
             if (!$response->successful()) {
                 throw new RuntimeException('Could not reach Apple to verify the token.');
@@ -151,10 +172,6 @@ class SocialIdentity
             return $response->json();
         });
 
-        try {
-            return (array) JWT::decode($idToken, JWK::parseKeySet($jwks));
-        } catch (\Throwable $e) {
-            return null;
-        }
+        return JWK::parseKeySet($jwks);
     }
 }
