@@ -117,7 +117,11 @@ class RevenueCat
             'period_type' => $purchase['period_type'] ?? null,
             'will_renew' => $isActive && $unsubscribed === null && $billingIssue === null,
             'environment' => !empty($purchase['is_sandbox']) ? 'SANDBOX' : 'PRODUCTION',
-            'original_transaction_id' => $purchase['original_purchase_date'] ?? null,
+            // The subscriber object carries the real identifier as
+            // store_transaction_id; original_purchase_date is a timestamp and
+            // was landing in this column, which made the row untraceable back
+            // to a Play/App Store transaction.
+            'original_transaction_id' => $purchase['store_transaction_id'] ?? null,
             'purchased_at' => $this->toUtc($entitlement['purchase_date'] ?? null),
             'expires_at' => $this->toUtc($entitlement['expires_date'] ?? null),
             'unsubscribe_detected_at' => $unsubscribed,
