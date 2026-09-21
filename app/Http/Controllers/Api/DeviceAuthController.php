@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\SocialIdentity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -121,7 +122,7 @@ class DeviceAuthController extends Controller
     /**
      * Attach a social identity to the signed-in account.
      *
-     * POST /api/auth/link  { provider, provider_id, email?, name?, avatar? }
+     * POST /api/auth/link  { provider, id_token, name?, avatar? }
      *
      * Called after Sign in with Apple or Google while already holding an
      * anonymous token. Two outcomes:
@@ -137,37 +138,48 @@ class DeviceAuthController extends Controller
     {
         $validated = $request->validate([
             'provider' => ['required', 'in:google,apple'],
-            'provider_id' => ['required', 'string', 'max:255'],
-            'email' => ['nullable', 'email', 'max:255'],
+            'id_token' => ['required', 'string'],
+            // Cosmetic only. Who you are comes from the verified token below;
+            // these just fill the profile in when the provider supplies them.
             'name' => ['nullable', 'string', 'max:255'],
             'avatar' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $current = $request->user();
-        $column = $validated['provider'] === 'google' ? 'google_id' : 'apple_id';
+        // The identity is established here and nowhere else. This endpoint used
+        // to take provider_id and email from the request body and trust them,
+        // which meant posting a known email address returned a token for that
+        // person's account.
+        try {
+            $identity = SocialIdentity::verify($validated['provider'], $validated['id_token']);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 401);
+        }
 
-        $existing = User::where($column, $validated['provider_id'])
-            ->when(!empty($validated['email']), function ($q) use ($validated) {
-                $q->orWhere('email', $validated['email']);
+        $current = $request->user();
+        $column = $identity->provider === 'google' ? 'google_id' : 'apple_id';
+
+        $existing = User::where($column, $identity->id)
+            ->when($identity->email !== null, function ($q) use ($identity) {
+                $q->orWhere('email', $identity->email);
             })
             ->where('id', '!=', $current->id)
             ->first();
 
         if (!$existing) {
             $current->fill(array_filter([
-                $column => $validated['provider_id'],
-                'email' => $validated['email'] ?? null,
-                'name' => $validated['name'] ?? null,
+                $column => $identity->id,
+                'email' => $identity->email,
+                'name' => $validated['name'] ?? $identity->name,
                 'avatar' => $validated['avatar'] ?? null,
             ], fn ($v) => $v !== null));
-            $current->auth_provider = $validated['provider'];
+            $current->auth_provider = $identity->provider;
             $current->last_seen_at = now();
             $current->save();
 
             return $this->issue($current, 'account linked');
         }
 
-        DB::transaction(function () use ($current, $existing, $column, $validated) {
+        DB::transaction(function () use ($current, $existing, $column, $identity) {
             $currentHasSub = DB::table('subscriptions')
                 ->where('user_id', $current->id)->where('is_active', true)->exists();
             $existingHasSub = DB::table('subscriptions')
@@ -184,8 +196,8 @@ class DeviceAuthController extends Controller
                     ->update(['user_id' => $existing->id]);
             }
 
-            $existing->{$column} = $validated['provider_id'];
-            $existing->auth_provider = $validated['provider'];
+            $existing->{$column} = $identity->id;
+            $existing->auth_provider = $identity->provider;
             $existing->install_id = $current->install_id ?: $existing->install_id;
             $existing->last_seen_at = now();
             $existing->save();

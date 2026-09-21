@@ -39,11 +39,27 @@ return [
         'client_id'     => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),
         'redirect'      => env('GOOGLE_REDIRECT_URI', 'https://your-app.com/auth/google/callback'),
+
+        // Every OAuth client an ID token may legitimately be issued for. The
+        // app asks for the token with the *web* client id, so that is the
+        // audience that arrives; the iOS client is listed for when the app
+        // offers Google there too. A token for anything else is not a sign-in
+        // here, however validly it is signed.
+        'allowed_audiences' => array_filter([
+            env('GOOGLE_WEB_CLIENT_ID'),
+            env('GOOGLE_IOS_CLIENT_ID'),
+        ]),
     ],
 
     // Apple Sign-In (mobile identity token flow — no OAuth redirect needed)
     'apple' => [
         'client_id' => env('APPLE_CLIENT_ID'), // App bundle ID, e.g. uz.mq.braille
+
+        // `aud` on a native Sign in with Apple token is the bundle id.
+        'allowed_audiences' => array_filter([
+            env('APPLE_BUNDLE_ID', 'uz.mq.brailleRecognition'),
+            env('APPLE_CLIENT_ID'),
+        ]),
     ],
 
 
