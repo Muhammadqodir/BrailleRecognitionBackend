@@ -47,7 +47,15 @@ class RevenueCatWebhookController extends Controller
         }
 
         $rcUserId = (string) ($event['app_user_id'] ?? '');
-        $user = $rcUserId !== '' ? User::where('rc_user_id', $rcUserId)->first() : null;
+
+        // A purchase made before the app logged in to the account arrives under
+        // the anonymous $RCAnonymousID, with the account's id among the
+        // aliases. Match on any of them, or that purchase never reaches a user.
+        $candidates = array_values(array_filter(array_unique(array_merge(
+            [$rcUserId, (string) ($event['original_app_user_id'] ?? '')],
+            array_map('strval', (array) ($event['aliases'] ?? [])),
+        ))));
+        $user = $candidates ? User::whereIn('rc_user_id', $candidates)->first() : null;
 
         $inserted = DB::table('subscription_events')->insertOrIgnore([
             'event_id' => $eventId,

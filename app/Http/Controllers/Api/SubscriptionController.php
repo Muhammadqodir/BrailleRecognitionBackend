@@ -19,10 +19,36 @@ class SubscriptionController extends Controller
     {
     }
 
-    /** GET /api/subscription */
+    /**
+     * How long a "not premium" answer is trusted before RevenueCat is asked
+     * again. Bounds the extra RevenueCat calls to one per user per window.
+     */
+    private const RECHECK_AFTER_MINUTES = 5;
+
+    /**
+     * GET /api/subscription
+     *
+     * A stored "not premium" is re-checked against RevenueCat once it is a few
+     * minutes old. We only learn about a purchase when something tells us —
+     * the app's sync or a webhook — and when both missed it (a purchase made on
+     * the anonymous RevenueCat id before the account was logged in), people in
+     * a paid trial were shown the paywall indefinitely.
+     */
     public function show(Request $request): JsonResponse
     {
-        return response()->json(['data' => $this->payload($request->user())]);
+        $user = $request->user();
+        $sub = $user->subscription()->first();
+
+        $stale = $sub === null
+            || $sub->updated_at === null
+            || $sub->updated_at->lt(now()->subMinutes(self::RECHECK_AFTER_MINUTES));
+
+        if ((!$sub || !$sub->grantsAccess()) && $stale) {
+            $this->revenueCat->sync($user);
+            $user = $user->fresh();
+        }
+
+        return response()->json(['data' => $this->payload($user)]);
     }
 
     /**
