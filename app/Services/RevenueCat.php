@@ -123,7 +123,7 @@ class RevenueCat
             // to a Play/App Store transaction.
             'original_transaction_id' => $purchase['store_transaction_id'] ?? null,
             'purchased_at' => $this->toUtc($entitlement['purchase_date'] ?? null),
-            'expires_at' => $this->toUtc($entitlement['expires_date'] ?? null),
+            'expires_at' => $this->storable($expiresAt),
             'unsubscribe_detected_at' => $unsubscribed,
             'billing_issue_detected_at' => $billingIssue,
         ];
@@ -148,6 +148,19 @@ class RevenueCat
      * RevenueCat sends epoch milliseconds on webhooks and ISO-8601 strings on
      * the REST API, so both have to be accepted.
      */
+    /**
+     * `subscriptions.expires_at` is a TIMESTAMP, which ends in January 2038. A
+     * "lifetime" promotional grant from the RevenueCat dashboard expires
+     * centuries out, and writing that made every sync for the user throw.
+     * Nothing we sell outlives 2037, so later dates are stored as its last day.
+     */
+    private function storable(?Carbon $at): ?Carbon
+    {
+        $max = Carbon::create(2037, 12, 31, 0, 0, 0, 'UTC');
+
+        return $at !== null && $at->greaterThan($max) ? $max : $at;
+    }
+
     public function toUtc(mixed $value): ?Carbon
     {
         if ($value === null || $value === '' || $value === false) {
