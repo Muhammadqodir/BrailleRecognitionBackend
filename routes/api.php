@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AvailableLanguageController;
 use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\AppConfigController;
 use App\Http\Controllers\Api\RevenueCatWebhookController;
+use App\Http\Controllers\Api\ScanAttemptController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\TranslationController;
 use Illuminate\Support\Facades\Route;
@@ -121,4 +122,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/translations', [TranslationController::class, 'store']);
     Route::patch('/translations/{translation}', [TranslationController::class, 'update']);
     Route::delete('/translations/{translation}', [TranslationController::class, 'destroy']);
+
+    // The phone's own reading of a scan it passed to the OCR host: training
+    // material for the on-device model, never shown in history.
+    Route::post('/scan-attempts', [ScanAttemptController::class, 'store']);
 });

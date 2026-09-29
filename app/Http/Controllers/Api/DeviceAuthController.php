@@ -206,6 +206,8 @@ class DeviceAuthController extends Controller
             // moves with it rather than being stranded.
             DB::table('translations')->where('user_id', $current->id)
                 ->update(['user_id' => $existing->id]);
+            DB::table('scan_attempts')->where('user_id', $current->id)
+                ->update(['user_id' => $existing->id]);
 
             $current->tokens()->delete();
             if ($current->auth_provider === 'anonymous') {

@@ -68,6 +68,8 @@ class User extends Authenticatable
         static::deleting(function (User $user) {
             $user->translations()->where('input_file', 'like', Translation::SCAN_DIR.'/%')
                 ->each(fn (Translation $t) => $t->deleteStoredPhoto());
+            ScanAttempt::where('user_id', $user->id)->whereNotNull('photo')
+                ->each(fn (ScanAttempt $a) => $a->deletePhoto());
         });
     }
 
