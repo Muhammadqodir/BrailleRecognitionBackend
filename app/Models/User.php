@@ -61,6 +61,16 @@ class User extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        // Translations go with the user through the foreign key's cascade,
+        // which fires no model events, so their photos are removed here.
+        static::deleting(function (User $user) {
+            $user->translations()->where('input_file', 'like', Translation::SCAN_DIR.'/%')
+                ->each(fn (Translation $t) => $t->deleteStoredPhoto());
+        });
+    }
+
     public function translations(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(Translation::class);

@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Translation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 /**
  * Scan history.
@@ -57,8 +59,11 @@ class TranslationController extends Controller
     /**
      * POST /api/translations
      *
-     * Called by the OCR host once it has recognised an image. It owns the
-     * result files, so this only records what came back.
+     * Two callers. The OCR host records a scan it recognised; it owns the
+     * result files and sends their paths. The app records a scan it
+     * recognised on the phone and sends the photo itself as `image`, which is
+     * kept here and replaces both paths with its own URL. `result_json` then
+     * holds the cells the app drew over the photo.
      */
     public function store(Request $request): JsonResponse
     {
@@ -69,7 +74,16 @@ class TranslationController extends Controller
             'input_file' => ['nullable', 'string', 'max:255'],
             'result_marked' => ['nullable', 'string', 'max:255'],
             'lang' => ['required', 'string', 'max:8'],
+            'image' => ['nullable', 'file', 'mimes:jpg,jpeg', 'max:8192'],
         ]);
+        unset($validated['image']);
+
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->storeAs(
+                Translation::SCAN_DIR, Str::uuid().'.jpg', 'public');
+            $validated['input_file'] = $path;
+            $validated['result_marked'] = Storage::disk('public')->url($path);
+        }
 
         $translation = $request->user()->translations()->create($validated);
 

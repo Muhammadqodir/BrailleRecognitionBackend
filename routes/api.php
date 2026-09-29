@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\DeviceAuthController;
 use App\Http\Controllers\Api\AppleNotificationController;
 use App\Http\Controllers\Api\AvailableLanguageController;
 use App\Http\Controllers\Api\AnalyticsController;
+use App\Http\Controllers\Api\AppConfigController;
 use App\Http\Controllers\Api\RevenueCatWebhookController;
 use App\Http\Controllers\Api\SubscriptionController;
 use App\Http\Controllers\Api\TranslationController;
@@ -72,6 +73,16 @@ Route::post('/apple/notifications', [AppleNotificationController::class, 'handle
 |--------------------------------------------------------------------------
 */
 Route::get('/languages', [AvailableLanguageController::class, 'index']);
+
+/*
+|--------------------------------------------------------------------------
+| App config
+|--------------------------------------------------------------------------
+|
+| Remote switches the apps read at start-up (on-device OCR or the OCR host).
+|
+*/
+Route::get('/config', [AppConfigController::class, 'show']);
 
 /*
 |--------------------------------------------------------------------------
