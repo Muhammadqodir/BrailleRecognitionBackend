@@ -62,6 +62,7 @@ class SubscriptionController extends Controller
     {
         $sub = $user->subscription()->first();
         $isPremium = $sub !== null && $sub->grantsAccess();
+        $freeLeft = $isPremium ? 0 : $user->freeScansLeft();
 
         return [
             'rc_user_id' => $user->rc_user_id,
@@ -73,11 +74,12 @@ class SubscriptionController extends Controller
             'store' => $sub->store ?? null,
             'will_renew' => (bool) ($sub->will_renew ?? false),
             'expires_at' => optional($sub?->expires_at)->toIso8601String(),
-            // There is no free quota any more: the model is a trial, then pay.
-            // The field stays so older clients reading it keep working.
-            'can_translate' => $isPremium,
-            'free_limit' => 0,
-            'free_left' => 0,
+            // A few real scans before the paywall: people need to see their
+            // own page read before they will pay for it. Clients back to
+            // 3.1.0 only read can_translate, so they get the free scans too.
+            'can_translate' => $isPremium || $freeLeft > 0,
+            'free_limit' => (int) config('services.revenuecat.free_scans', 5),
+            'free_left' => $freeLeft,
         ];
     }
 }

@@ -84,11 +84,10 @@ class User extends Authenticatable
     }
 
     /**
-     * Whether this user may translate right now.
+     * Whether this user has an active subscription or trial.
      *
-     * There is no free quota any more — the model is a 7-day trial and then
-     * payment. A trial counts as premium here: they are entitled to everything
-     * until it lapses, and the store tells us when that happens.
+     * A trial counts as premium here: they are entitled to everything until
+     * it lapses, and the store tells us when that happens.
      */
     public function isPremium(): bool
     {
@@ -97,6 +96,23 @@ class User extends Authenticatable
             : $this->subscription()->first();
 
         return $sub !== null && $sub->grantsAccess();
+    }
+
+    /**
+     * Photo translations left before the paywall.
+     *
+     * Counted from history rather than a counter, so it cannot drift: every
+     * scan that found braille is filed there, by the app or by the OCR host.
+     * Empty results are the scans that found nothing, and do not count.
+     */
+    public function freeScansLeft(): int
+    {
+        $used = $this->translations()
+            ->whereNotNull('result')
+            ->whereRaw("TRIM(result) <> ''")
+            ->count();
+
+        return max(0, (int) config('services.revenuecat.free_scans', 5) - $used);
     }
 
     public function isAnonymous(): bool

@@ -70,6 +70,9 @@ return [
         // Sent by RevenueCat as the bare Authorization header value, with no
         // "Bearer " prefix. Getting that wrong silently drops every webhook.
         'webhook_auth' => env('REVENUECAT_WEBHOOK_AUTH', ''),
+        // Photo translations anyone gets before the paywall, per account. A
+        // scan that found no braille does not use one.
+        'free_scans' => (int) env('FREE_SCANS', 5),
     ],
 
 ];
