@@ -99,7 +99,9 @@ class TranslationController extends Controller
     /**
      * PATCH /api/translations/{translation}
      *
-     * Favourite, or rate. Scoped to the owner so one user cannot touch
+     * Favourite, rate, or re-read in another braille language: the app reads
+     * the stored cells again on the phone and sends the new language and
+     * text. Scoped to the owner so one user cannot touch
      * another's row by guessing an id — the legacy backend had exactly that
      * hole on set_fav and set_rating.
      */
@@ -112,6 +114,10 @@ class TranslationController extends Controller
         $validated = $request->validate([
             'is_fav' => ['nullable', 'boolean'],
             'rating' => ['nullable', 'integer', 'min:1', 'max:5'],
+            'lang' => ['nullable', 'string', 'max:8'],
+            'result' => ['nullable', 'string'],
+            'result_braille' => ['nullable', 'string'],
+            'result_json' => ['nullable', 'string'],
         ]);
 
         $translation->fill(array_filter($validated, fn ($v) => $v !== null));

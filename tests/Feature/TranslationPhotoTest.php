@@ -37,6 +37,29 @@ class TranslationPhotoTest extends TestCase
         Storage::disk('public')->assertMissing($t->input_file);
     }
 
+    public function test_scan_can_be_reread_in_another_language(): void
+    {
+        $user = User::factory()->create();
+        $t = $user->translations()->create(['lang' => 'EN', 'result' => 'fyf', 'result_json' => '{}']);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/translations/{$t->id}", [
+            'lang' => 'RU',
+            'result' => 'фыф',
+            'result_braille' => '⠋⠽⠋',
+            'result_json' => '{"lang_source":"picked"}',
+        ])->assertOk();
+
+        $t->refresh();
+        $this->assertSame('RU', $t->lang);
+        $this->assertSame('фыф', $t->result);
+        $this->assertSame('{"lang_source":"picked"}', $t->result_json);
+
+        $other = User::factory()->create();
+        $this->actingAs($other, 'sanctum')->patchJson("/api/translations/{$t->id}", ['lang' => 'DE'])
+            ->assertNotFound();
+        $this->assertSame('RU', $t->refresh()->lang);
+    }
+
     public function test_ocr_host_paths_are_kept_as_sent(): void
     {
         Storage::fake('public');
