@@ -113,7 +113,8 @@ class TranslationController extends Controller
 
         $validated = $request->validate([
             'is_fav' => ['nullable', 'boolean'],
-            'rating' => ['nullable', 'integer', 'min:1', 'max:5'],
+            // 👍 = 1, 👎 = -1.
+            'rating' => ['nullable', 'integer', 'in:-1,1'],
             'lang' => ['nullable', 'string', 'max:8'],
             'result' => ['nullable', 'string'],
             'result_braille' => ['nullable', 'string'],

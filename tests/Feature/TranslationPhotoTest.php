@@ -60,6 +60,23 @@ class TranslationPhotoTest extends TestCase
         $this->assertSame('RU', $t->refresh()->lang);
     }
 
+    public function test_thumbs_down_is_saved(): void
+    {
+        $user = User::factory()->create();
+        $t = $user->translations()->create(['lang' => 'EN', 'result' => 'abc']);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/translations/{$t->id}", ['rating' => -1])
+            ->assertOk();
+        $this->assertSame(-1, $t->refresh()->rating);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/translations/{$t->id}", ['rating' => 1])
+            ->assertOk();
+        $this->assertSame(1, $t->refresh()->rating);
+
+        $this->actingAs($user, 'sanctum')->patchJson("/api/translations/{$t->id}", ['rating' => 3])
+            ->assertStatus(422);
+    }
+
     public function test_ocr_host_paths_are_kept_as_sent(): void
     {
         Storage::fake('public');
