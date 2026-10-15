@@ -57,6 +57,21 @@ class Translation extends Model
         }
     }
 
+    /**
+     * The marked-up picture as an absolute URL. Scans read on the phone store
+     * one already; those the OCR host read store a path on that host.
+     */
+    public function markedImageUrl(): ?string
+    {
+        $url = (string) $this->result_marked;
+
+        if ($url === '') {
+            return null;
+        }
+
+        return preg_match('#^https?://#', $url) ? $url : rtrim(config('braille.ocr_host_url'), '/').'/'.ltrim($url, '/');
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
