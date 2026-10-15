@@ -1,6 +1,6 @@
 import type { ColumnDef } from '@tanstack/react-table';
 
-import { Empty, formatDate, Pill } from '@/components/badges';
+import { CountryCell, Empty, formatDate, Pill } from '@/components/badges';
 import { DataTableColumnHeader, type SortDirection } from '@/components/data-table/data-table-column-header';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,7 @@ import { displayName, initials } from '@/lib/people';
 export interface SubscriptionRow {
     id: number;
     user: { id: number; name: string | null; email: string | null; provider: string | null } | null;
+    country: string | null;
     product_id: string | null;
     store: string | null;
     period_type: string | null;
@@ -54,7 +55,7 @@ export function getSubscriptionColumns({ sort, direction, onSort }: ColumnsOptio
             id: 'user',
             header: 'User',
             enableHiding: false,
-            size: 240,
+            size: 220,
             cell: ({ row }) => {
                 const user = row.original.user;
 
@@ -76,27 +77,33 @@ export function getSubscriptionColumns({ sort, direction, onSort }: ColumnsOptio
             },
         },
         {
+            accessorKey: 'country',
+            header: 'Country',
+            size: 130,
+            cell: ({ row }) => <CountryCell code={row.original.country} />,
+        },
+        {
             accessorKey: 'product_id',
             header: 'Product',
-            size: 200,
+            // Default size: takes whatever width is left
             cell: ({ row }) => <span className="block truncate">{row.original.product_id ?? '—'}</span>,
         },
         {
             accessorKey: 'store',
             header: 'Store',
-            size: 120,
+            size: 100,
             cell: ({ row }) => <span className="text-muted-foreground">{STORE_LABELS[row.original.store ?? ''] ?? row.original.store ?? '—'}</span>,
         },
         {
             accessorKey: 'period_type',
             header: 'Period',
-            size: 90,
+            size: 80,
             cell: ({ row }) => (row.original.period_type ? <Pill>{row.original.period_type.toLowerCase()}</Pill> : <Empty />),
         },
         {
             accessorKey: 'status',
             header: 'Status',
-            size: 150,
+            size: 130,
             cell: ({ row }) => (
                 <div className="flex items-center gap-1.5">
                     <Badge variant={row.original.grants_access ? 'default' : 'outline'}>{row.original.status.replace('_', ' ')}</Badge>
@@ -107,19 +114,19 @@ export function getSubscriptionColumns({ sort, direction, onSort }: ColumnsOptio
         {
             accessorKey: 'will_renew',
             header: 'Renews',
-            size: 80,
+            size: 70,
             cell: ({ row }) => <span className="text-muted-foreground">{row.original.will_renew ? 'Yes' : 'No'}</span>,
         },
         {
             accessorKey: 'purchased_at',
             header: header('Purchased', 'purchased_at'),
-            size: 120,
+            size: 100,
             cell: ({ row }) => <span className="tabular-nums text-muted-foreground">{formatDate(row.original.purchased_at)}</span>,
         },
         {
             accessorKey: 'expires_at',
             header: header('Expires', 'expires_at'),
-            size: 120,
+            size: 100,
             cell: ({ row }) => <span className="tabular-nums text-muted-foreground">{formatDate(row.original.expires_at)}</span>,
         },
     ];

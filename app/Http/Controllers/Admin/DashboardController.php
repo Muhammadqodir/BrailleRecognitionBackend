@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Subscription;
 use App\Models\Translation;
 use App\Models\User;
+use App\Support\Country;
 use App\Support\Sql;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
@@ -195,8 +196,7 @@ class DashboardController extends Controller
             ->groupBy('locale')
             ->get()
             ->each(function ($row) use (&$counts, &$unplaced) {
-                if (preg_match('/^[a-z]{2,3}[-_]([A-Za-z]{2})$/', (string) $row->locale, $match)) {
-                    $code = strtoupper($match[1]);
+                if ($code = Country::fromLocale($row->locale)) {
                     $counts[$code] = ($counts[$code] ?? 0) + (int) $row->count;
                 } else {
                     $unplaced += (int) $row->count;

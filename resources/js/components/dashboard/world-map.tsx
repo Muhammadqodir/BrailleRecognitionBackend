@@ -7,6 +7,8 @@ import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 import worldTopology from 'world-atlas/countries-110m.json';
 
+import { countryName } from '@/lib/countries';
+
 interface CountryCount {
     code: string;
     count: number;
@@ -25,15 +27,6 @@ const geography: FeatureCollection = {
 };
 
 const numberFormatter = new Intl.NumberFormat('en-US');
-const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
-
-export function countryName(code: string): string {
-    try {
-        return regionNames.of(code) ?? code;
-    } catch {
-        return code;
-    }
-}
 
 const MAP_WIDTH = 960;
 const MAP_HEIGHT = 470;

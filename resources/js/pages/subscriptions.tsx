@@ -10,12 +10,14 @@ import { useDataTable } from '@/components/data-table/use-data-table';
 import { getSubscriptionColumns, STORE_LABELS, type SubscriptionRow } from '@/components/subscriptions/columns';
 import { UserDetailDialog } from '@/components/users/user-detail-dialog';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
+import { countryOptions } from '@/lib/countries';
 import type { Paginated, SharedProps } from '@/types';
 
 type Facet = 'status' | 'store' | 'period_type' | 'environment' | 'product_id';
 
 type SubscriptionsFilters = Record<Facet, string[]> & {
     search: string | null;
+    country: string[];
     sort: string;
     direction: SortDirection;
     per_page: number;
@@ -24,6 +26,7 @@ type SubscriptionsFilters = Record<Facet, string[]> & {
 interface SubscriptionsProps {
     subscriptions: Paginated<SubscriptionRow>;
     facetCounts: Record<Facet, Record<string, number>>;
+    countryCounts: Record<string, number>;
     filters: SubscriptionsFilters;
 }
 
@@ -35,7 +38,7 @@ const FACETS: { key: Facet; title: string; label?: (value: string) => string }[]
     { key: 'environment', title: 'Environment', label: (value) => value.toLowerCase() },
 ];
 
-export default function Subscriptions({ subscriptions, facetCounts, filters }: SubscriptionsProps) {
+export default function Subscriptions({ subscriptions, facetCounts, countryCounts, filters }: SubscriptionsProps) {
     const { routes } = usePage<SharedProps>().props;
 
     const navigate = (overrides: Partial<Record<string, unknown>>) => {
@@ -56,7 +59,7 @@ export default function Subscriptions({ subscriptions, facetCounts, filters }: S
     const table = useDataTable(columns, subscriptions.data, (row) => String(row.id));
     const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
-    const isFiltered = Boolean(filters.search) || FACETS.some((facet) => filters[facet.key].length > 0);
+    const isFiltered = Boolean(filters.search) || filters.country.length > 0 || FACETS.some((facet) => filters[facet.key].length > 0);
 
     return (
         <DashboardLayout
@@ -85,11 +88,12 @@ export default function Subscriptions({ subscriptions, facetCounts, filters }: S
                     }
                     csv={{
                         filename: 'subscriptions.csv',
-                        header: ['ID', 'User ID', 'Email', 'Product', 'Store', 'Period', 'Status', 'Environment', 'Renews', 'Purchased', 'Expires'],
+                        header: ['ID', 'User ID', 'Email', 'Country', 'Product', 'Store', 'Period', 'Status', 'Environment', 'Renews', 'Purchased', 'Expires'],
                         row: (s) => [
                             s.id,
                             s.user?.id ?? null,
                             s.user?.email ?? null,
+                            s.country,
                             s.product_id,
                             s.store,
                             s.period_type,
@@ -101,6 +105,12 @@ export default function Subscriptions({ subscriptions, facetCounts, filters }: S
                         ],
                     }}
                 >
+                    <DataTableFacetedFilter
+                        title="Country"
+                        selected={filters.country}
+                        onChange={(values) => navigate({ country: values })}
+                        options={countryOptions(countryCounts)}
+                    />
                     {FACETS.map((facet) => (
                         <DataTableFacetedFilter
                             key={facet.key}

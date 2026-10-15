@@ -2,6 +2,7 @@ import { formatDateTime, Pill, RatingMark } from '@/components/badges';
 import { DetailField, DetailSection } from '@/components/data-table/detail-fields';
 import { useEntityDetail } from '@/components/data-table/use-entity-detail';
 import { ENGINE_LABELS, type TranslationRow, type TranslationUser } from '@/components/translations/columns';
+import { MarkedScan, ScanImage, type Cell } from '@/components/translations/scan-images';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,6 +13,11 @@ interface TranslationDetail {
     text: string | null;
     braille: string | null;
     image_url: string | null;
+    photo_url: string | null;
+    marked_url: string | null;
+    width: number | null;
+    height: number | null;
+    cells: Cell[];
     lang: string;
     rating: number | null;
     is_fav: boolean;
@@ -68,23 +74,14 @@ export function TranslationDetailDialog({ translationId, detailUrl, onOpenChange
                             </div>
                         </DialogHeader>
 
-                        {translation.image_url && (
-                            <a href={translation.image_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-border bg-muted">
-                                <img
-                                    src={translation.image_url}
-                                    alt="The scanned page with the recognised cells marked"
-                                    className="max-h-[360px] w-full object-contain"
-                                    onError={(event) => {
-                                        event.currentTarget.replaceWith(
-                                            Object.assign(document.createElement('p'), {
-                                                className: 'p-6 text-center text-sm text-muted-foreground',
-                                                textContent: 'The photo could not be loaded.',
-                                            }),
-                                        );
-                                    }}
-                                />
-                            </a>
-                        )}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                            <ScanImage label="Photo" url={translation.photo_url} />
+                            {translation.engine === 'device' ? (
+                                <MarkedScan url={translation.photo_url} cells={translation.cells} width={translation.width} height={translation.height} />
+                            ) : (
+                                <ScanImage label="Marked by the OCR server" url={translation.marked_url} />
+                            )}
+                        </div>
 
                         <div className="flex flex-col gap-2">
                             <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Text</h3>

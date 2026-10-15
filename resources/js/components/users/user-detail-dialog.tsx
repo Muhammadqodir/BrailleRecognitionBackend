@@ -1,6 +1,6 @@
 import { Link } from '@inertiajs/react';
 
-import { formatDate, formatDateTime, Pill, PlanBadge, RatingMark, type Plan } from '@/components/badges';
+import { CountryCell, formatDate, formatDateTime, Pill, PlanBadge, RatingMark, type Plan } from '@/components/badges';
 import { DetailField, DetailSection, DetailStat } from '@/components/data-table/detail-fields';
 import { useEntityDetail } from '@/components/data-table/use-entity-detail';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -31,6 +31,7 @@ interface UserDetail {
     platform: string | null;
     app_version: string | null;
     locale: string | null;
+    country: string | null;
     events_count: number;
     last_seen_at: string | null;
     created_at: string | null;
@@ -135,6 +136,7 @@ export function UserDetailDialog({ userId, detailUrl, translationsUrl, onOpenCha
                             <DetailField label="Last seen" value={formatDateTime(user.last_seen_at)} />
                             <DetailField label="Joined" value={formatDate(user.created_at)} />
                             <DetailField label="App version" value={user.app_version} />
+                            <DetailField label="Country" value={user.country && <CountryCell code={user.country} />} />
                             <DetailField label="Device language" value={user.locale} />
                         </DetailSection>
 

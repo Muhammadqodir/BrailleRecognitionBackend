@@ -23,7 +23,7 @@ export function DashboardLayout({ title, description, actions, toolbar, flush, c
         <TooltipProvider delayDuration={0}>
             <SidebarProvider>
                 <AppSidebar />
-                <SidebarInset>
+                <SidebarInset className="min-w-0">
                     <header className="sticky top-0 z-10 border-b bg-background">
                         <div className="flex h-14 items-center gap-3 px-4 sm:px-6">
                             <SidebarTrigger className="md:hidden" />

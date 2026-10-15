@@ -2,7 +2,7 @@ import { Link } from '@inertiajs/react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Copy, MoreHorizontal, ScanText } from 'lucide-react';
 
-import { Empty, formatDate, Pill, PlanBadge, type Plan } from '@/components/badges';
+import { CountryCell, Empty, formatDate, Pill, PlanBadge, type Plan } from '@/components/badges';
 import { DataTableColumnHeader, type SortDirection } from '@/components/data-table/data-table-column-header';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ export interface UserRow {
     provider: string | null;
     role: string | null;
     platform: string | null;
+    country: string | null;
     plan: Plan;
     translations_count: number;
     last_seen_at: string | null;
@@ -56,7 +57,7 @@ export function getUserColumns({ sort, direction, onSort, translationsUrl }: Col
             id: 'user',
             header: 'User',
             enableHiding: false,
-            size: 260,
+            size: 240,
             cell: ({ row }) => {
                 const user = row.original;
                 const name = displayName(user);
@@ -81,9 +82,15 @@ export function getUserColumns({ sort, direction, onSort, translationsUrl }: Col
             cell: ({ row }) => (row.original.provider ? <Pill>{row.original.provider}</Pill> : <Empty />),
         },
         {
+            accessorKey: 'country',
+            header: 'Country',
+            size: 140,
+            cell: ({ row }) => <CountryCell code={row.original.country} />,
+        },
+        {
             accessorKey: 'role',
             header: 'Role',
-            size: 220,
+            // Left at the default size so it takes whatever width is left.
             cell: ({ row }) => <span className="block truncate text-muted-foreground">{row.original.role ?? '—'}</span>,
         },
         {

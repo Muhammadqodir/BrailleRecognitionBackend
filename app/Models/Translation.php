@@ -63,13 +63,19 @@ class Translation extends Model
      */
     public function markedImageUrl(): ?string
     {
-        $url = (string) $this->result_marked;
+        return $this->ocrHostUrl($this->result_marked);
+    }
 
-        if ($url === '') {
+    /** An absolute URL as is; a path on the OCR host made absolute; null for nothing usable. */
+    public function ocrHostUrl(?string $path): ?string
+    {
+        $path = (string) $path;
+
+        if ($path === '' || str_ends_with($path, '/.jpg')) {
             return null;
         }
 
-        return preg_match('#^https?://#', $url) ? $url : rtrim(config('braille.ocr_host_url'), '/').'/'.ltrim($url, '/');
+        return preg_match('#^https?://#', $path) ? $path : rtrim(config('braille.ocr_host_url'), '/').'/'.ltrim($path, '/');
     }
 
     public function user(): BelongsTo

@@ -11,6 +11,7 @@ import { useDataTable } from '@/components/data-table/use-data-table';
 import { getUserColumns, type UserRow } from '@/components/users/columns';
 import { UserDetailDialog } from '@/components/users/user-detail-dialog';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
+import { countryOptions } from '@/lib/countries';
 import type { Paginated, SharedProps } from '@/types';
 
 interface UsersFilters {
@@ -18,6 +19,7 @@ interface UsersFilters {
     provider: string[];
     plan: Plan[];
     role: string[];
+    country: string[];
     sort: string;
     direction: SortDirection;
     per_page: number;
@@ -28,12 +30,13 @@ interface UsersProps {
     providerCounts: Record<string, number>;
     roleCounts: Record<string, number>;
     planCounts: Record<Plan, number>;
+    countryCounts: Record<string, number>;
     filters: UsersFilters;
 }
 
 const toOptions = (counts: Record<string, number>) => Object.entries(counts).map(([value, count]) => ({ label: value, value, count }));
 
-export default function Users({ users, providerCounts, roleCounts, planCounts, filters }: UsersProps) {
+export default function Users({ users, providerCounts, roleCounts, planCounts, countryCounts, filters }: UsersProps) {
     const { routes } = usePage<SharedProps>().props;
 
     const navigate = (overrides: Partial<Record<string, unknown>>) => {
@@ -55,7 +58,7 @@ export default function Users({ users, providerCounts, roleCounts, planCounts, f
     const table = useDataTable(columns, users.data, (row) => String(row.id));
     const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
 
-    const isFiltered = Boolean(filters.search) || filters.provider.length > 0 || filters.plan.length > 0 || filters.role.length > 0;
+    const isFiltered = Boolean(filters.search) || filters.provider.length > 0 || filters.plan.length > 0 || filters.role.length > 0 || filters.country.length > 0;
 
     return (
         <DashboardLayout
@@ -84,12 +87,13 @@ export default function Users({ users, providerCounts, roleCounts, planCounts, f
                     }
                     csv={{
                         filename: 'users.csv',
-                        header: ['ID', 'Name', 'Email', 'Sign-in', 'Role', 'Plan', 'Scans', 'Platform', 'Last seen', 'Joined'],
+                        header: ['ID', 'Name', 'Email', 'Sign-in', 'Country', 'Role', 'Plan', 'Scans', 'Platform', 'Last seen', 'Joined'],
                         row: (user) => [
                             user.id,
                             user.name,
                             user.email,
                             user.provider,
+                            user.country,
                             user.role,
                             user.plan,
                             user.translations_count,
@@ -104,6 +108,12 @@ export default function Users({ users, providerCounts, roleCounts, planCounts, f
                         selected={filters.plan}
                         onChange={(values) => navigate({ plan: values })}
                         options={(Object.keys(PLAN_LABELS) as Plan[]).map((plan) => ({ label: PLAN_LABELS[plan], value: plan, count: planCounts[plan] }))}
+                    />
+                    <DataTableFacetedFilter
+                        title="Country"
+                        selected={filters.country}
+                        onChange={(values) => navigate({ country: values })}
+                        options={countryOptions(countryCounts)}
                     />
                     <DataTableFacetedFilter
                         title="Sign-in"

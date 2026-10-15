@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Subscription;
+use App\Support\Country;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -31,8 +32,12 @@ class SubscriptionController extends Controller
             ->mapWithKeys(fn (string $column) => [$column => array_values((array) $request->input($column, []))])
             ->all();
 
+        $countries = array_values((array) $request->input('country', []));
+
         $query = $this->purchases()
             ->with('user:id,name,email,auth_provider')
+            ->addSelect(['locale' => Country::latestLocale('subscriptions.user_id')])
+            ->when($countries !== [], fn (Builder $q) => Country::filter($q, 'subscriptions.user_id', $countries))
             ->when($request->filled('search'), function (Builder $query) use ($request) {
                 $search = $request->string('search')->trim()->value();
                 $query->where(fn (Builder $q) => $q
@@ -59,6 +64,7 @@ class SubscriptionController extends Controller
                 'email' => $subscription->user->email,
                 'provider' => $subscription->user->auth_provider,
             ] : null,
+            'country' => Country::fromLocale($subscription->locale),
             'product_id' => $subscription->product_id,
             'store' => $subscription->store,
             'period_type' => $subscription->period_type,
@@ -81,9 +87,11 @@ class SubscriptionController extends Controller
                     ->pluck('count', 'value')
                     ->map(fn ($count) => (int) $count)])
                 ->all(),
+            'countryCounts' => Country::counts($this->purchases()->toBase()->select('user_id')),
             'filters' => [
                 'search' => $request->string('search')->value() ?: null,
                 ...$filters,
+                'country' => $countries,
                 'sort' => $sort,
                 'direction' => $direction,
                 'per_page' => $perPage,

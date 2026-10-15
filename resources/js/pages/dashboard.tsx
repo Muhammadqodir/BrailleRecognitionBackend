@@ -7,8 +7,9 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { countryName, WorldMap } from '@/components/dashboard/world-map';
+import { WorldMap } from '@/components/dashboard/world-map';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
+import { countryFlag, countryName } from '@/lib/countries';
 import { displayName, initials } from '@/lib/people';
 import type { SharedProps } from '@/types';
 
@@ -295,7 +296,9 @@ export default function Dashboard({
                             <TableBody>
                                 {topCountries.map((country) => (
                                     <TableRow key={country.code}>
-                                        <TableCell className="font-medium">{countryName(country.code)}</TableCell>
+                                        <TableCell className="font-medium">
+                                            {countryFlag(country.code)} {countryName(country.code)}
+                                        </TableCell>
                                         <TableCell className="text-right tabular-nums">{numberFormatter.format(country.count)}</TableCell>
                                     </TableRow>
                                 ))}

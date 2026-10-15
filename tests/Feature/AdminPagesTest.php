@@ -98,9 +98,10 @@ class AdminPagesTest extends TestCase
 
     public function test_users_can_be_filtered_by_plan_role_and_search(): void
     {
-        $paying = User::factory()->create(['name' => 'Paying Person', 'role' => 'Teacher']);
-        $trial = User::factory()->create(['role' => null]);
-        User::factory()->create(['role' => 'Parent']);
+        // Fixed names and emails: a random one could contain the ID searched for below.
+        $paying = User::factory()->create(['name' => 'Paying Person', 'email' => 'paying@example.com', 'role' => 'Teacher']);
+        $trial = User::factory()->create(['name' => 'Trial Person', 'email' => 'trial@example.com', 'role' => null]);
+        User::factory()->create(['name' => 'Free Person', 'email' => 'free@example.com', 'role' => 'Parent']);
         $this->subscribe($paying, 'normal');
         $this->subscribe($trial, 'trial');
 
@@ -116,6 +117,32 @@ class AdminPagesTest extends TestCase
         $this->assertSame(2, $total(['role' => ['Teacher', 'Parent']]));
         $this->assertSame(1, $total(['search' => 'Paying']));
         $this->assertSame(1, $total(['search' => (string) $trial->id]));
+    }
+
+    public function test_users_and_subscriptions_show_and_filter_by_country(): void
+    {
+        $brazil = User::factory()->create();
+        $nowhere = User::factory()->create();
+        User::factory()->create();
+        $this->event($brazil, 'app_opened');
+        $this->event($nowhere, 'app_opened', [], 'en');
+        $this->subscribe($brazil, 'trial');
+
+        $props = fn (string $route, array $query) => $this->actingAs($this->admin, 'admin')
+            ->get(route($route, $query))
+            ->assertOk()
+            ->viewData('page')['props'];
+
+        $users = $props('admin.users', ['country' => ['BR']]);
+        $this->assertSame(1, $users['users']['total']);
+        $this->assertSame('BR', $users['users']['data'][0]['country']);
+        $this->assertSame(['BR' => 1], $users['countryCounts']);
+        $this->assertSame(2, $props('admin.users', ['country' => ['unknown']])['users']['total']);
+
+        $subscriptions = $props('admin.subscriptions', ['country' => ['BR']]);
+        $this->assertSame(1, $subscriptions['subscriptions']['total']);
+        $this->assertSame('BR', $subscriptions['subscriptions']['data'][0]['country']);
+        $this->assertSame(0, $props('admin.subscriptions', ['country' => ['US']])['subscriptions']['total']);
     }
 
     public function test_user_detail_returns_profile_and_recent_translations(): void
@@ -158,7 +185,9 @@ class AdminPagesTest extends TestCase
         $translation = User::factory()->create()->translations()->create([
             'lang' => 'EN',
             'result' => 'Hi',
-            'result_json' => json_encode(['engine' => 'device', 'backend' => 'coreml', 'width' => 10, 'height' => 20, 'timings' => ['detect_ms' => 5]]),
+            'result_json' => json_encode(['engine' => 'device', 'backend' => 'coreml', 'width' => 10, 'height' => 20, 'timings' => ['detect_ms' => 5],
+                'cells' => [[1, 2, 3, 4, 7, 0.9, 0.5]]]),
+            'result_marked' => 'https://braillerecognition.alfocus.uz/storage/scans/a.jpg',
         ]);
 
         $this->actingAs($this->admin, 'admin')->getJson(route('admin.translations.show', $translation))
@@ -166,7 +195,10 @@ class AdminPagesTest extends TestCase
             ->assertJsonPath('data.engine', 'device')
             ->assertJsonPath('data.backend', 'coreml')
             ->assertJsonPath('data.size', '10×20')
-            ->assertJsonPath('data.timings.detect_ms', 5);
+            ->assertJsonPath('data.timings.detect_ms', 5)
+            ->assertJsonPath('data.photo_url', 'https://braillerecognition.alfocus.uz/storage/scans/a.jpg')
+            ->assertJsonPath('data.marked_url', null)
+            ->assertJsonPath('data.cells.0', [1, 2, 3, 4, 7]);
     }
 
     public function test_subscriptions_leave_out_rows_with_no_purchase(): void

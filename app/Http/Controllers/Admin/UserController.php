@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Subscription;
 use App\Models\Translation;
 use App\Models\User;
+use App\Support\Country;
 use App\Support\Sql;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -35,6 +36,7 @@ class UserController extends Controller
         $providers = array_values((array) $request->input('provider', []));
         $plans = array_values(array_intersect((array) $request->input('plan', []), self::PLANS));
         $roles = array_values((array) $request->input('role', []));
+        $countries = array_values((array) $request->input('country', []));
 
         $users = User::query()
             ->with('subscription')
@@ -46,6 +48,7 @@ class UserController extends Controller
                     ->whereColumn('analytics_events.user_id', 'users.id')
                     ->orderByDesc('id')
                     ->limit(1),
+                'locale' => Country::latestLocale('users.id'),
             ])
             ->when($request->filled('search'), function (Builder $query) use ($request) {
                 $search = $request->string('search')->trim()->value();
@@ -61,6 +64,7 @@ class UserController extends Controller
             ->when($providers !== [], fn (Builder $query) => $this->applyValueFilter($query, 'auth_provider', $providers))
             ->when($roles !== [], fn (Builder $query) => $this->applyValueFilter($query, 'role', $roles))
             ->when($plans !== [], fn (Builder $query) => $this->applyPlanFilter($query, $plans))
+            ->when($countries !== [], fn (Builder $query) => Country::filter($query, 'users.id', $countries))
             ->orderBy($sort, $direction)
             ->orderByDesc('id')
             ->paginate($perPage)
@@ -74,6 +78,7 @@ class UserController extends Controller
             'provider' => $user->auth_provider,
             'role' => $user->role,
             'platform' => $user->platform,
+            'country' => Country::fromLocale($user->locale),
             'plan' => $this->plan($user->subscription),
             'translations_count' => $user->translations_count,
             'last_seen_at' => $user->last_seen_at,
@@ -85,11 +90,13 @@ class UserController extends Controller
             'providerCounts' => $this->counts('auth_provider'),
             'roleCounts' => $this->counts('role', 12),
             'planCounts' => $this->planCounts(),
+            'countryCounts' => Country::counts(),
             'filters' => [
                 'search' => $request->string('search')->value() ?: null,
                 'provider' => $providers,
                 'plan' => $plans,
                 'role' => $roles,
+                'country' => $countries,
                 'sort' => $sort,
                 'direction' => $direction,
                 'per_page' => $perPage,
@@ -116,6 +123,7 @@ class UserController extends Controller
             'platform' => $lastEvent?->platform,
             'app_version' => $lastEvent?->app_version,
             'locale' => $lastEvent?->locale,
+            'country' => Country::fromLocale($lastEvent?->locale),
             'events_count' => DB::table('analytics_events')->where('user_id', $user->id)->count(),
             'last_seen_at' => $user->last_seen_at,
             'created_at' => $user->created_at,

@@ -121,11 +121,25 @@ class TranslationController extends Controller
         $meta = json_decode((string) $translation->result_json, true);
         $meta = is_array($meta) ? $meta : [];
 
+        $device = ($meta['engine'] ?? null) === 'device';
+
         return response()->json(['data' => [
             'id' => $translation->id,
             'text' => $translation->result,
             'braille' => $translation->result_braille,
             'image_url' => $translation->markedImageUrl(),
+            // The phone keeps the plain photo and the boxes it found, and the
+            // dashboard draws the marks over it, as the app does. The OCR host
+            // stored a marked-up picture of its own instead.
+            'photo_url' => $device ? $translation->markedImageUrl() : $translation->ocrHostUrl($translation->input_file),
+            'marked_url' => $device ? null : $translation->markedImageUrl(),
+            'width' => isset($meta['width']) ? (int) $meta['width'] : null,
+            'height' => isset($meta['height']) ? (int) $meta['height'] : null,
+            // [x1, y1, x2, y2, dot pattern] in photo pixels.
+            'cells' => $device ? collect((array) ($meta['cells'] ?? []))
+                ->filter(fn ($cell) => is_array($cell) && count($cell) >= 5)
+                ->map(fn (array $cell) => array_map('floatval', array_slice($cell, 0, 5)))
+                ->values() : [],
             'lang' => $translation->lang,
             'rating' => $translation->rating,
             'is_fav' => $translation->is_fav,
@@ -138,7 +152,7 @@ class TranslationController extends Controller
             ] : null,
             'created_at' => $translation->created_at,
             // What the recogniser reported about itself; the per-cell boxes are left out.
-            'engine' => ($meta['engine'] ?? null) === 'device' ? 'device' : 'server',
+            'engine' => $device ? 'device' : 'server',
             'backend' => $meta['backend'] ?? null,
             'model' => $meta['model'] ?? null,
             'size' => isset($meta['width'], $meta['height']) ? "{$meta['width']}×{$meta['height']}" : null,

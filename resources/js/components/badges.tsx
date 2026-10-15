@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { countryFlag, countryName } from '@/lib/countries';
 
 /** A small neutral tag for a code-like value (platform, provider, language). */
 export function Pill({ children }: { children: ReactNode }) {
@@ -41,4 +42,17 @@ export function formatDate(value: string | null, fallback = '—'): string {
 
 export function formatDateTime(value: string | null, fallback = 'Never'): string {
     return value ? new Date(value).toLocaleString() : fallback;
+}
+
+export function CountryCell({ code }: { code: string | null }) {
+    if (!code) {
+        return <Empty />;
+    }
+
+    return (
+        <span className="flex min-w-0 items-center gap-1.5" title={countryName(code)}>
+            <span>{countryFlag(code)}</span>
+            <span className="truncate text-muted-foreground">{countryName(code)}</span>
+        </span>
+    );
 }
