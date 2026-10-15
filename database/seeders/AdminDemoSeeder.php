@@ -209,7 +209,8 @@ class AdminDemoSeeder extends Seeder
         return [
             'event_uid' => (string) Str::uuid(),
             'install_id' => $user->install_id,
-            'user_id' => $user->id,
+            // The app sends events before it signs in, so production never fills this.
+            'user_id' => null,
             'name' => $name,
             'props' => $props ? json_encode($props) : null,
             'platform' => $platform,

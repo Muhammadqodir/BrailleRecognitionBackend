@@ -10,11 +10,22 @@ use Illuminate\Support\Facades\DB;
  * A user's country, read from the region in their device language ("pt-BR"
  * is Brazil) as the app reports it with every analytics event. A language
  * with no region ("en") says nothing about where the phone is.
+ *
+ * Events are tied to an account through the install ID: the app sends them
+ * before it has signed in, so analytics_events.user_id is left empty.
  */
 class Country
 {
     /** The filter bucket for users with no region in any event. Never a real ISO code. */
     public const UNKNOWN = 'unknown';
+
+    /** SQL for the install ID of the row's user, given the column holding the user's ID. */
+    public static function installIdOf(string $userIdColumn): string
+    {
+        return $userIdColumn === 'users.id'
+            ? 'users.install_id'
+            : "(SELECT users.install_id FROM users WHERE users.id = {$userIdColumn})";
+    }
 
     public static function fromLocale(?string $locale): ?string
     {
@@ -26,7 +37,7 @@ class Country
     {
         return DB::table('analytics_events')
             ->select('locale')
-            ->whereColumn('analytics_events.user_id', $userIdColumn)
+            ->whereRaw('analytics_events.install_id = '.self::installIdOf($userIdColumn))
             ->whereNotNull('locale')
             ->orderByDesc('id')
             ->limit(1);
@@ -40,13 +51,12 @@ class Country
     public static function filter(Builder $query, string $userIdColumn, array $codes): void
     {
         $named = array_values(array_filter($codes, fn (string $code) => preg_match('/^[A-Z]{2}$/', $code)));
-        $withRegion = fn (QueryBuilder $q) => $q->whereColumn('analytics_events.user_id', $userIdColumn)
-            ->where(fn (QueryBuilder $q) => $q->where('locale', 'like', '%-__')->orWhere('locale', 'like', '%\___'));
+        $installId = self::installIdOf($userIdColumn);
 
-        $query->where(function (Builder $q) use ($named, $codes, $userIdColumn, $withRegion) {
+        $query->where(function (Builder $q) use ($named, $codes, $installId) {
             if ($named !== []) {
                 $q->orWhereExists(fn (QueryBuilder $events) => $events->from('analytics_events')
-                    ->whereColumn('analytics_events.user_id', $userIdColumn)
+                    ->whereRaw("analytics_events.install_id = {$installId}")
                     ->where(function (QueryBuilder $locale) use ($named) {
                         foreach ($named as $code) {
                             $locale->orWhere('locale', 'like', "%-{$code}")->orWhere('locale', 'like', "%\\_{$code}");
@@ -54,7 +64,9 @@ class Country
                     }));
             }
             if (in_array(self::UNKNOWN, $codes, true)) {
-                $q->orWhereNotExists(fn (QueryBuilder $events) => $withRegion($events->from('analytics_events')));
+                $q->orWhereNotExists(fn (QueryBuilder $events) => $events->from('analytics_events')
+                    ->whereRaw("analytics_events.install_id = {$installId}")
+                    ->where(fn (QueryBuilder $l) => $l->where('locale', 'like', '%-__')->orWhere('locale', 'like', '%\\___')));
             }
         });
     }
@@ -71,10 +83,10 @@ class Country
         $counts = [];
 
         DB::table('analytics_events')
-            ->whereNotNull('user_id')
-            ->when($userIds, fn (QueryBuilder $q) => $q->whereIn('user_id', $userIds))
-            ->selectRaw('locale, COUNT(DISTINCT user_id) as count')
-            ->groupBy('locale')
+            ->join('users', 'users.install_id', '=', 'analytics_events.install_id')
+            ->when($userIds, fn (QueryBuilder $q) => $q->whereIn('users.id', $userIds))
+            ->selectRaw('analytics_events.locale as locale, COUNT(DISTINCT users.id) as count')
+            ->groupBy('analytics_events.locale')
             ->get()
             ->each(function ($row) use (&$counts) {
                 if ($code = self::fromLocale($row->locale)) {

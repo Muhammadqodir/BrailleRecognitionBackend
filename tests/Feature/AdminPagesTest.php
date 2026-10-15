@@ -23,12 +23,17 @@ class AdminPagesTest extends TestCase
         $this->admin = Admin::create(['name' => 'Admin', 'email' => 'admin@example.com', 'password' => 'secret-password']);
     }
 
+    /** Like the app, which sends events before it has an account: tied by install, user_id left empty. */
     private function event(User $user, string $name, array $props = [], string $locale = 'pt-BR'): void
     {
+        if ($user->install_id === null) {
+            $user->forceFill(['install_id' => 'install-'.$user->id])->save();
+        }
+
         DB::table('analytics_events')->insert([
             'event_uid' => (string) Str::uuid(),
-            'install_id' => 'install-'.$user->id,
-            'user_id' => $user->id,
+            'install_id' => $user->install_id,
+            'user_id' => null,
             'name' => $name,
             'props' => json_encode($props),
             'platform' => 'android',
@@ -148,12 +153,16 @@ class AdminPagesTest extends TestCase
     public function test_user_detail_returns_profile_and_recent_translations(): void
     {
         $user = User::factory()->create();
+        $this->event($user, 'app_opened');
         $user->translations()->create(['lang' => 'EN', 'result' => 'Hi', 'result_marked' => 'results/a.marked.jpg']);
 
         $this->actingAs($this->admin, 'admin')->getJson(route('admin.users.show', $user))
             ->assertOk()
             ->assertJsonPath('data.id', $user->id)
             ->assertJsonPath('data.plan', 'free')
+            ->assertJsonPath('data.country', 'BR')
+            ->assertJsonPath('data.platform', 'android')
+            ->assertJsonPath('data.events_count', 1)
             ->assertJsonPath('data.translations.0.engine', 'server')
             ->assertJsonPath('data.translations.0.image_url', 'http://109.123.251.227:8000/results/a.marked.jpg');
     }

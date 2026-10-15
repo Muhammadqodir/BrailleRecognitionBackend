@@ -45,7 +45,7 @@ class UserController extends Controller
                 // The platform of the install that last reported in for this account.
                 'platform' => DB::table('analytics_events')
                     ->select('platform')
-                    ->whereColumn('analytics_events.user_id', 'users.id')
+                    ->whereColumn('analytics_events.install_id', 'users.install_id')
                     ->orderByDesc('id')
                     ->limit(1),
                 'locale' => Country::latestLocale('users.id'),
@@ -108,7 +108,9 @@ class UserController extends Controller
     {
         $user->load('subscription')->loadCount('translations');
 
-        $lastEvent = DB::table('analytics_events')->where('user_id', $user->id)->orderByDesc('id')->first();
+        // Events carry the install, not the account (see App\Support\Country).
+        $events = DB::table('analytics_events')->where('install_id', $user->install_id ?? '');
+        $lastEvent = (clone $events)->orderByDesc('id')->first();
         $engine = Sql::engine();
 
         return response()->json(['data' => [
@@ -124,7 +126,7 @@ class UserController extends Controller
             'app_version' => $lastEvent?->app_version,
             'locale' => $lastEvent?->locale,
             'country' => Country::fromLocale($lastEvent?->locale),
-            'events_count' => DB::table('analytics_events')->where('user_id', $user->id)->count(),
+            'events_count' => (clone $events)->count(),
             'last_seen_at' => $user->last_seen_at,
             'created_at' => $user->created_at,
             'plan' => $this->plan($user->subscription),
