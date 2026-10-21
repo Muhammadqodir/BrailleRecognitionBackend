@@ -7,6 +7,7 @@ use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -208,6 +209,49 @@ class AdminPagesTest extends TestCase
             ->assertJsonPath('data.photo_url', 'https://braillerecognition.alfocus.uz/storage/scans/a.jpg')
             ->assertJsonPath('data.marked_url', null)
             ->assertJsonPath('data.cells.0', [1, 2, 3, 4, 7]);
+    }
+
+    public function test_a_phone_scan_can_be_read_in_another_language_without_saving_it(): void
+    {
+        $reader = tempnam(sys_get_temp_dir(), 'reader');
+        chmod($reader, 0755);
+        config(['braille.reader.bin' => $reader]);
+        Process::fake(['*' => Process::result(json_encode(['RU' => ['text' => 'привет', 'braille' => '⠏⠗']]))]);
+
+        $translation = User::factory()->create()->translations()->create([
+            'lang' => 'EN',
+            'result' => 'hello',
+            'result_json' => json_encode(['engine' => 'device', 'width' => 10, 'height' => 20, 'cells' => [[1, 2, 3, 4, 7]],
+                'lang_guess' => ['best' => 'EN', 'margin' => 2.5, 'scores' => ['RU' => -5.0, 'EN' => -3.9]]]),
+        ]);
+
+        $this->actingAs($this->admin, 'admin')->getJson(route('admin.translations.show', $translation))
+            ->assertJsonPath('data.lang_scores.0.lang', 'EN')
+            ->assertJsonPath('data.detect_margin', 2.5)
+            ->assertJsonPath('data.readable_langs.0', 'EN');
+
+        $this->actingAs($this->admin, 'admin')->getJson(route('admin.translations.read', [$translation, 'lang' => 'RU']))
+            ->assertOk()
+            ->assertJsonPath('data.text', 'привет');
+
+        Process::assertRan(fn ($process) => $process->command[0] === $reader
+            && json_decode($process->input, true)['langs'] === ['RU']
+            && json_decode($process->input, true)['cells'] === [[1, 2, 3, 4, 7]]);
+        $this->assertSame('hello', $translation->fresh()->result);
+
+        $this->actingAs($this->admin, 'admin')->getJson(route('admin.translations.read', [$translation, 'lang' => 'XX']))
+            ->assertUnprocessable();
+        unlink($reader);
+    }
+
+    public function test_scans_without_cells_cannot_be_read_again(): void
+    {
+        $translation = User::factory()->create()->translations()->create(['lang' => 'EN', 'result' => 'hello', 'result_marked' => 'results/a.jpg']);
+
+        $this->actingAs($this->admin, 'admin')->getJson(route('admin.translations.show', $translation))
+            ->assertJsonPath('data.readable_langs', []);
+        $this->actingAs($this->admin, 'admin')->getJson(route('admin.translations.read', [$translation, 'lang' => 'RU']))
+            ->assertUnprocessable();
     }
 
     public function test_subscriptions_leave_out_rows_with_no_purchase(): void

@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -22,6 +24,9 @@ class TranslationController extends Controller
     private const RATINGS = ['up', 'down', 'none'];
 
     private const RESULTS = ['read', 'empty'];
+
+    /** The languages the app's text step reads (braille_text's supportedLangs). */
+    public const READABLE_LANGS = ['EN', 'EN2', 'RU', 'DE', 'GR', 'LV', 'PL', 'UZ', 'UZL', 'FR', 'ES', 'PT', 'AR'];
 
     public function index(Request $request): Response
     {
@@ -159,7 +164,59 @@ class TranslationController extends Controller
             'timings' => Arr::where((array) ($meta['timings'] ?? []), fn ($value) => is_numeric($value)),
             'detected_lang' => $meta['lang_guess']['best'] ?? null,
             'lang_source' => $meta['lang_source'] ?? null,
+            // What Auto scored each language at, best first: how sure the phone was.
+            'lang_scores' => collect((array) ($meta['lang_guess']['scores'] ?? []))
+                ->filter(fn ($score) => is_numeric($score))
+                ->sortDesc()
+                ->map(fn ($score, $lang) => ['lang' => (string) $lang, 'score' => (float) $score])
+                ->values(),
+            'detect_margin' => isset($meta['lang_guess']['margin']) ? (float) $meta['lang_guess']['margin'] : null,
+            'readable_langs' => $device && ! empty($meta['cells']) ? self::READABLE_LANGS : [],
             'turn' => $meta['turn'] ?? null,
+        ]]);
+    }
+
+    /**
+     * The scan's stored cells read in another language, as the app would read
+     * them if the person picked it. Nothing is saved: it is for checking what
+     * Auto chose.
+     */
+    public function read(Request $request, Translation $translation): JsonResponse
+    {
+        $lang = $request->validate(['lang' => ['required', Rule::in(self::READABLE_LANGS)]])['lang'];
+
+        $meta = json_decode((string) $translation->result_json, true);
+        if (! is_array($meta) || ($meta['engine'] ?? null) !== 'device' || empty($meta['cells']) || empty($meta['width']) || empty($meta['height'])) {
+            return response()->json(['message' => 'Only scans read on the phone keep the cells needed to read them again.'], 422);
+        }
+
+        $reader = config('braille.reader');
+        if (! is_executable($reader['bin'])) {
+            return response()->json(['message' => 'The braille reader is not installed on this server.'], 503);
+        }
+
+        $result = Process::timeout(15)
+            ->input(json_encode([
+                'cells' => $meta['cells'],
+                'width' => $meta['width'],
+                'height' => $meta['height'],
+                'langs' => [$lang],
+            ])."\n")
+            ->run([$reader['bin'], '--louis', $reader['louis'], '--tables', $reader['tables']]);
+
+        $output = json_decode($result->output(), true);
+        $read = $output[$lang] ?? null;
+
+        if (! $result->successful() || ! is_array($read) || isset($read['error'])) {
+            report(new \RuntimeException('braille reader failed: '.($output['error'] ?? $read['error'] ?? $result->errorOutput())));
+
+            return response()->json(['message' => 'The braille reader could not read this scan.'], 500);
+        }
+
+        return response()->json(['data' => [
+            'lang' => $lang,
+            'text' => $read['text'],
+            'braille' => $read['braille'],
         ]]);
     }
 }

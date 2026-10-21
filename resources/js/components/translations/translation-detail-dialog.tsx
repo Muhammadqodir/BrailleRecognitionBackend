@@ -2,6 +2,7 @@ import { formatDateTime, Pill, RatingMark } from '@/components/badges';
 import { DetailField, DetailSection } from '@/components/data-table/detail-fields';
 import { useEntityDetail } from '@/components/data-table/use-entity-detail';
 import { ENGINE_LABELS, type TranslationRow, type TranslationUser } from '@/components/translations/columns';
+import { ReadAsText } from '@/components/translations/read-as-text';
 import { MarkedScan, ScanImage, type Cell } from '@/components/translations/scan-images';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
@@ -31,6 +32,9 @@ interface TranslationDetail {
     timings: Record<string, number>;
     detected_lang: string | null;
     lang_source: string | null;
+    lang_scores: { lang: string; score: number }[];
+    detect_margin: number | null;
+    readable_langs: string[];
     turn: number | null;
 }
 
@@ -83,17 +87,15 @@ export function TranslationDetailDialog({ translationId, detailUrl, onOpenChange
                             )}
                         </div>
 
-                        <div className="flex flex-col gap-2">
-                            <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Text</h3>
-                            <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm whitespace-pre-wrap">
-                                {translation.text?.trim() || <span className="text-muted-foreground">No text found</span>}
-                            </p>
-                            {translation.braille?.trim() && (
-                                <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-lg leading-relaxed break-all whitespace-pre-wrap">
-                                    {translation.braille}
-                                </p>
-                            )}
-                        </div>
+                        <ReadAsText
+                            key={translation.id}
+                            readUrl={`${detailUrl}/read`}
+                            storedLang={translation.lang}
+                            stored={{ text: translation.text, braille: translation.braille }}
+                            readableLangs={translation.readable_langs}
+                            langScores={translation.lang_scores}
+                            detectMargin={translation.detect_margin}
+                        />
 
                         <Separator />
 

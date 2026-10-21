@@ -24,6 +24,18 @@ return [
     'ocr_host_url' => env('OCR_HOST_URL', 'http://109.123.251.227:8000/'),
 
     /*
+    | Reads a phone scan's stored cells in another language, for the
+    | dashboard: the app's own braille_text converter compiled as a command
+    | (BrailleRecognitionFlutter packages/braille_text/bin/read_cells.dart)
+    | and liblouis 3.35 built from the app's sources, with the app's tables.
+    */
+    'reader' => [
+        'bin' => env('BRAILLE_READER_BIN', storage_path('app/braille-reader/read_cells')),
+        'louis' => env('BRAILLE_READER_LOUIS', storage_path('app/braille-reader/liblouis.so')),
+        'tables' => env('BRAILLE_READER_TABLES', storage_path('app/braille-reader/tables')),
+    ],
+
+    /*
     | The admin dashboard lives under this path segment. This repository is
     | public, so production sets a random ADMIN_PATH in .env to keep it out
     | of scans of common admin paths. Obscurity, not access control: the
