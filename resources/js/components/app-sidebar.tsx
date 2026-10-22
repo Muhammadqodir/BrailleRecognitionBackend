@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { CreditCard, LayoutGrid, ScanText, Users } from 'lucide-react';
+import { CreditCard, LayoutGrid, ScanText, SquareDashedMousePointer, Users } from 'lucide-react';
 import * as React from 'react';
 
 import { Logo } from '@/components/logo';
@@ -42,6 +42,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             title: 'Subscriptions',
             href: routes.subscriptions,
             icon: CreditCard,
+        },
+        {
+            title: 'Labeling',
+            href: routes.labeling,
+            icon: SquareDashedMousePointer,
         },
     ];
 

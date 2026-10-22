@@ -4,12 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Translation;
+use App\Support\BrailleReader;
 use App\Support\Sql;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -190,25 +190,14 @@ class TranslationController extends Controller
             return response()->json(['message' => 'Only scans read on the phone keep the cells needed to read them again.'], 422);
         }
 
-        $reader = config('braille.reader');
-        if (! is_executable($reader['bin'])) {
+        if (! BrailleReader::installed()) {
             return response()->json(['message' => 'The braille reader is not installed on this server.'], 503);
         }
 
-        $result = Process::timeout(15)
-            ->input(json_encode([
-                'cells' => $meta['cells'],
-                'width' => $meta['width'],
-                'height' => $meta['height'],
-                'langs' => [$lang],
-            ])."\n")
-            ->run([$reader['bin'], '--louis', $reader['louis'], '--tables', $reader['tables']]);
-
-        $output = json_decode($result->output(), true);
-        $read = $output[$lang] ?? null;
-
-        if (! $result->successful() || ! is_array($read) || isset($read['error'])) {
-            report(new \RuntimeException('braille reader failed: '.($output['error'] ?? $read['error'] ?? $result->errorOutput())));
+        try {
+            $read = BrailleReader::read($meta['cells'], (int) $meta['width'], (int) $meta['height'], $lang);
+        } catch (\RuntimeException $e) {
+            report($e);
 
             return response()->json(['message' => 'The braille reader could not read this scan.'], 500);
         }

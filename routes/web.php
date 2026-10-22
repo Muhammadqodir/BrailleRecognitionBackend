@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\LabelingController;
 use App\Http\Controllers\Admin\Settings\PasswordController;
 use App\Http\Controllers\Admin\SubscriptionController;
 use App\Http\Controllers\Admin\TranslationController;
@@ -50,6 +51,13 @@ Route::prefix(config('braille.admin_path'))
             Route::get('translations/{translation}', [TranslationController::class, 'show'])->name('translations.show');
             Route::get('translations/{translation}/read', [TranslationController::class, 'read'])->name('translations.read');
             Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions');
+
+            Route::get('labeling', [LabelingController::class, 'index'])->name('labeling');
+            Route::get('labeling/classifier.onnx', [LabelingController::class, 'classifier'])->name('labeling.classifier');
+            Route::get('labeling/{labelPage}', [LabelingController::class, 'show'])->name('labeling.show');
+            Route::put('labeling/{labelPage}', [LabelingController::class, 'save'])->name('labeling.save');
+            Route::post('labeling/{labelPage}/skip', [LabelingController::class, 'skip'])->name('labeling.skip');
+            Route::post('labeling/{labelPage}/read', [LabelingController::class, 'read'])->name('labeling.read');
 
             Route::get('settings/password', [PasswordController::class, 'edit'])->name('settings.password');
             Route::put('settings/password', [PasswordController::class, 'update'])->name('settings.password.update');

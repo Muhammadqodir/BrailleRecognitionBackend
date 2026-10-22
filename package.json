@@ -33,6 +33,7 @@
         "d3-geo": "^3.1.1",
         "i18n-iso-countries": "^7.14.0",
         "lucide-react": "^1.47.0",
+        "onnxruntime-web": "^1.30.0",
         "radix-ui": "^1.6.7",
         "react": "^19.3.0",
         "react-dom": "^19.3.0",

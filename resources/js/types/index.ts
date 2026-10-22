@@ -11,6 +11,7 @@ export interface AppRoutes {
     users: string;
     translations: string;
     subscriptions: string;
+    labeling: string;
     settingsPassword: string;
     settingsPasswordUpdate: string;
 }
