@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
+import { send, SignedOut } from '@/lib/http';
 import { languageName } from '@/lib/languages';
 import type { SharedProps } from '@/types';
 
@@ -96,26 +97,6 @@ const SHORTCUTS: [string, string][] = [
     ['T / L', 'Mark the page two-sided / lit from below or the side'],
     ['Enter', 'Save and go to the next page'],
 ];
-
-function xsrf(): string {
-    const m = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : '';
-}
-
-/** The session ran out (401) or its CSRF token with it (419): signing in again fixes it. */
-class SignedOut extends Error {}
-
-async function send<T>(url: string, method: string, body: unknown): Promise<T> {
-    const response = await fetch(url, {
-        method,
-        headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-XSRF-TOKEN': xsrf() },
-        body: JSON.stringify(body),
-    });
-    if (response.status === 401 || response.status === 419) throw new SignedOut();
-    const json = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(json.message ?? `Request failed with ${response.status}`);
-    return json as T;
-}
 
 /**
  * Unsaved work on a page, kept in this browser after every change so a lost

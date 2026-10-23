@@ -36,6 +36,8 @@ class HandleInertiaRequests extends Middleware
                 'translations' => route('admin.translations'),
                 'subscriptions' => route('admin.subscriptions'),
                 'labeling' => route('admin.labeling'),
+                'dataset' => route('admin.dataset'),
+                'datasetTags' => route('admin.dataset.tags'),
                 'settingsPassword' => route('admin.settings.password'),
                 'settingsPasswordUpdate' => route('admin.settings.password.update'),
             ],

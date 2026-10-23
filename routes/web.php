@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\DatasetController;
 use App\Http\Controllers\Admin\LabelingController;
 use App\Http\Controllers\Admin\Settings\PasswordController;
 use App\Http\Controllers\Admin\SubscriptionController;
@@ -51,6 +52,9 @@ Route::prefix(config('braille.admin_path'))
             Route::get('translations/{translation}', [TranslationController::class, 'show'])->name('translations.show');
             Route::get('translations/{translation}/read', [TranslationController::class, 'read'])->name('translations.read');
             Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions');
+
+            Route::get('dataset', [DatasetController::class, 'index'])->name('dataset');
+            Route::patch('dataset/tags', [DatasetController::class, 'tag'])->name('dataset.tags');
 
             Route::get('labeling', [LabelingController::class, 'index'])->name('labeling');
             Route::get('labeling/classifier.onnx', [LabelingController::class, 'classifier'])->name('labeling.classifier');

@@ -164,6 +164,40 @@ class LabelingTest extends TestCase
         File::deleteDirectory($dir);
     }
 
+    public function test_dataset_lists_pages_and_sets_tags(): void
+    {
+        $this->scan($this->cells(6), 'p1');
+        $this->scan($this->cells(6), 'p2');
+        $this->artisan('labels:queue');
+        [$a, $b] = LabelPage::query()->orderBy('id')->get();
+        $this->actingAs($this->admin, 'admin')->putJson(route('admin.labeling.save', $a), ['cells' => [[10, 10, 24, 30, 5]], 'tags' => ['side_light']])->assertOk();
+
+        $this->actingAs($this->admin, 'admin')
+            ->get(route('admin.dataset'))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('dataset')->has('pages.data', 2)->where('statusCounts.done', 1));
+
+        $this->actingAs($this->admin, 'admin')
+            ->patchJson(route('admin.dataset.tags'), ['ids' => [$a->id, $b->id], 'tag' => 'two_sided', 'on' => true])
+            ->assertOk();
+        $this->assertSame(['two_sided', 'side_light'], $a->fresh()->tags);
+        $this->assertSame(['two_sided'], $b->fresh()->tags);
+
+        $this->actingAs($this->admin, 'admin')
+            ->patchJson(route('admin.dataset.tags'), ['ids' => [$a->id], 'tag' => 'side_light', 'on' => false])
+            ->assertOk();
+        $this->assertSame(['two_sided'], $a->fresh()->tags);
+        $this->assertSame('done', $a->fresh()->status);
+
+        $this->actingAs($this->admin, 'admin')
+            ->get(route('admin.dataset', ['tag' => ['two_sided'], 'status' => ['todo']]))
+            ->assertInertia(fn (Assert $page) => $page->has('pages.data', 1)->where('pages.data.0.id', $b->id));
+
+        $this->actingAs($this->admin, 'admin')
+            ->patchJson(route('admin.dataset.tags'), ['ids' => [$a->id], 'tag' => 'dark', 'on' => true])
+            ->assertUnprocessable();
+    }
+
     public function test_split_matches_the_m2_run(): void
     {
         // md5('m2' . id) as a 128-bit number mod 5, as Python computed it for the M2 split.
