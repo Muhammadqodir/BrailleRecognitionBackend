@@ -45,7 +45,7 @@ class ExportLabels extends Command
                     round(($c[2] - $c[0]) / $width, 6), round(($c[3] - $c[1]) / $height, 6),
                 ], $cells);
                 $patterns = [
-                    'schemaVersion' => 1, 'stem' => $stem, 'source' => 'human', 'image_size' => [$width, $height],
+                    'schemaVersion' => 1, 'stem' => $stem, 'source' => 'human', 'image_size' => [$width, $height], 'tags' => $page->tags ?? [],
                     'cells' => array_map(fn (array $box, array $c) => ['box' => $box, 'pattern' => (int) $c[4]], $boxes, $cells),
                 ];
 

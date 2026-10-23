@@ -106,6 +106,7 @@ class LabelingTest extends TestCase
             ->putJson(route('admin.labeling.save', $top), [
                 'cells' => [[10, 10, 24, 30, 5], [30, 10, 44, 30, 63]],
                 'edits' => ['deleted' => 4],
+                'tags' => ['two_sided', 'side_light', 'two_sided'],
                 'seconds' => 42,
             ])
             ->assertOk()
@@ -116,6 +117,11 @@ class LabelingTest extends TestCase
         $this->assertSame('done', $top->status);
         $this->assertSame([[10, 10, 24, 30, 5], [30, 10, 44, 30, 63]], $top->cellList());
         $this->assertSame(42, $top->seconds);
+        $this->assertSame(['two_sided', 'side_light'], $top->tags);
+
+        $this->actingAs($this->admin, 'admin')
+            ->putJson(route('admin.labeling.save', $other), ['cells' => [[10, 10, 24, 30, 5]], 'tags' => ['dark']])
+            ->assertUnprocessable();
         $this->assertSame($this->admin->id, $top->admin_id);
     }
 
@@ -139,7 +145,7 @@ class LabelingTest extends TestCase
         [$keep, $junk] = LabelPage::query()->orderBy('id')->get();
 
         $this->actingAs($this->admin, 'admin')->postJson(route('admin.labeling.skip', $junk), ['reason' => 'not_braille'])->assertOk();
-        $this->actingAs($this->admin, 'admin')->putJson(route('admin.labeling.save', $keep), ['cells' => [[100, 150, 120, 180, 9]]])->assertOk();
+        $this->actingAs($this->admin, 'admin')->putJson(route('admin.labeling.save', $keep), ['cells' => [[100, 150, 120, 180, 9]], 'tags' => ['side_light']])->assertOk();
         $this->assertSame('not_braille', $junk->fresh()->skip_reason);
 
         $dir = sys_get_temp_dir().'/labels-'.uniqid();
@@ -153,6 +159,7 @@ class LabelingTest extends TestCase
             $patterns = json_decode(File::get("{$dir}/bench/human_test/patterns/hl_keep.patterns.json"), true);
         }
         $this->assertSame(9, $patterns['cells'][0]['pattern']);
+        $this->assertSame(['side_light'], $patterns['tags']);
         $this->assertCount(1, File::allFiles($dir.'/'.($split ? 'det/images' : 'bench/human_test/images')));
         File::deleteDirectory($dir);
     }

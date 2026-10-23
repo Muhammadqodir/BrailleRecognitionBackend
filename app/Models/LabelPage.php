@@ -12,11 +12,18 @@ class LabelPage extends Model
 {
     public const STATUSES = ['todo', 'done', 'skipped'];
 
+    /**
+     * two_sided: the back's dents show between the front's dots (only the
+     * front is labeled); side_light: light from below or from the side, so
+     * raised dots can look like dents.
+     */
+    public const TAGS = ['two_sided', 'side_light'];
+
     public const SKIP_REASONS = ['not_braille', 'unreadable', 'rotated', 'duplicate', 'other'];
 
     protected $fillable = [
         'translation_id', 'split', 'status', 'skip_reason', 'priority', 'issues',
-        'suggestions', 'cells', 'edits', 'admin_id', 'seconds', 'labeled_at',
+        'suggestions', 'cells', 'edits', 'tags', 'admin_id', 'seconds', 'labeled_at',
     ];
 
     protected function casts(): array
@@ -25,6 +32,7 @@ class LabelPage extends Model
             'priority' => 'float',
             'issues' => 'array',
             'edits' => 'array',
+            'tags' => 'array',
             'seconds' => 'integer',
             'labeled_at' => 'datetime',
         ];

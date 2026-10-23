@@ -32,6 +32,7 @@ interface LabelingProps {
     startId: number | null;
     stats: Stats;
     skipReasons: string[];
+    tagNames: string[];
     langs: string[];
     classifierUrl: string | null;
     readerInstalled: boolean;
@@ -46,6 +47,7 @@ interface PageData {
     split: 'train' | 'test';
     status: 'todo' | 'done' | 'skipped';
     skip_reason: string | null;
+    tags: string[];
     priority: number;
     issues: Record<string, number> | null;
     model_cells: number[][];
@@ -70,6 +72,11 @@ const SKIP_LABELS: Record<string, string> = {
     other: 'Other',
 };
 
+const TAG_LABELS: Record<string, { label: string; hint: string; key: string }> = {
+    two_sided: { label: 'Two-sided', hint: 'The back’s dents show between the dots. Label only the raised side.', key: 'T' },
+    side_light: { label: 'Light from below / side', hint: 'Raised dots can look like dents in this light.', key: 'L' },
+};
+
 const SHORTCUTS: [string, string][] = [
     ['Click a box', 'Select it; drag to move, corners to resize'],
     ['Drag on the photo', 'Draw a new cell'],
@@ -86,6 +93,7 @@ const SHORTCUTS: [string, string][] = [
     ['Space + drag, scroll', 'Pan'],
     ['Pinch, ⌘ + scroll, + / −', 'Zoom; F fits'],
     ['⌘Z / ⇧⌘Z', 'Undo / redo'],
+    ['T / L', 'Mark the page two-sided / lit from below or the side'],
     ['Enter', 'Save and go to the next page'],
 ];
 
@@ -119,6 +127,7 @@ interface Draft {
     savedAt: number;
     cells: LabelCell[];
     rejected: number[];
+    tags?: string[];
 }
 
 const draftKey = (id: number) => `labeling-draft:${id}`;
@@ -154,7 +163,7 @@ function formatHours(seconds: number): string {
     return h ? `${h} h ${m} min` : `${m} min`;
 }
 
-export default function Labeling({ startId, stats: initialStats, skipReasons, langs, classifierUrl, readerInstalled }: LabelingProps) {
+export default function Labeling({ startId, stats: initialStats, skipReasons, tagNames, langs, classifierUrl, readerInstalled }: LabelingProps) {
     const { routes } = usePage<SharedProps>().props;
     const [pageId, setPageId] = useState<number | null>(startId);
     const [page, setPage] = useState<PageData | null>(null);
@@ -165,6 +174,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
     const initialCells = useRef<LabelCell[]>([]);
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [rejected, setRejected] = useState<Set<number>>(new Set());
+    const [tags, setTags] = useState<string[]>([]);
     const [showBoxes, setShowBoxes] = useState(true);
     const [showDots, setShowDots] = useState(true);
     const [showHelp, setShowHelp] = useState(false);
@@ -238,6 +248,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
                 setCells(start);
                 setSelectedId(null);
                 setRejected(new Set(restore?.rejected ?? []));
+                setTags(restore?.tags ?? data.tags ?? []);
                 setReading(null);
                 setDirty(Boolean(restore));
                 setRestoredAt(restore?.savedAt ?? null);
@@ -255,11 +266,11 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
     useEffect(() => {
         if (!page || !dirty) return;
         const timer = window.setTimeout(
-            () => writeDraft(page.id, { base: page.labeled_at ?? null, savedAt: Date.now(), cells, rejected: [...rejected] }),
+            () => writeDraft(page.id, { base: page.labeled_at ?? null, savedAt: Date.now(), cells, rejected: [...rejected], tags }),
             300,
         );
         return () => window.clearTimeout(timer);
-    }, [page, cells, rejected, dirty]);
+    }, [page, cells, rejected, tags, dirty]);
 
     const discardDraft = () => {
         if (!page) return;
@@ -267,6 +278,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
         undo.current.push(cellsRef.current);
         setCells(initialCells.current);
         setRejected(new Set());
+        setTags(page.tags ?? []);
         setDirty(false);
         setRestoredAt(null);
     };
@@ -294,6 +306,15 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
         setDirty(true);
         touch();
     }, [touch]);
+
+    const toggleTag = useCallback(
+        (tag: string) => {
+            setTags((ts) => (ts.includes(tag) ? ts.filter((t) => t !== tag) : [...ts, tag]));
+            setDirty(true);
+            touch();
+        },
+        [touch],
+    );
 
     const update = useCallback((id: number, change: Partial<LabelCell>) => {
         setCells((cs) => cs.map((c) => (c.id === id ? { ...c, ...change } : c)));
@@ -430,6 +451,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
             const result = await send<{ next_id: number | null; stats: Stats }>(pageUrl(page.id), 'PUT', {
                 cells: cells.map((c) => [c.x1, c.y1, c.x2, c.y2, c.pattern]),
                 edits: editStats(initialCells.current, cells),
+                tags,
                 seconds: Math.round(active.current.seconds),
             });
             clearDraft(page.id);
@@ -444,7 +466,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
             setSaving(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, cells, ordered, saving, touch]);
+    }, [page, cells, ordered, saving, touch, tags]);
 
     const skip = async (reason: string) => {
         if (!page) return;
@@ -519,6 +541,10 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
             } else if (key === 'c' && selected) {
                 snapshot();
                 void readDots([selected], true);
+            } else if (key === 't' && tagNames.includes('two_sided')) {
+                toggleTag('two_sided');
+            } else if (key === 'l' && tagNames.includes('side_light')) {
+                toggleTag('side_light');
             } else if (key === 'h') {
                 setShowBoxes((v) => !v);
             } else if (key === 'd') {
@@ -540,7 +566,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [selected, toggleDot, step, remove, snapshot, update, addAt, acceptAll, readDots, save, undoLast, redoLast, touch]);
+    }, [selected, toggleDot, step, remove, snapshot, update, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -707,6 +733,30 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
                                         </Button>
                                     </div>
                                 )}
+                                <section className="flex flex-col gap-2">
+                                    <h2 className="text-xs font-medium text-muted-foreground">This page is</h2>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {tagNames.map((t) => {
+                                            const on = tags.includes(t);
+                                            const info = TAG_LABELS[t];
+                                            return (
+                                                <Button
+                                                    key={t}
+                                                    variant={on ? 'default' : 'outline'}
+                                                    size="xs"
+                                                    aria-pressed={on}
+                                                    title={`${info?.hint ?? ''} (${info?.key ?? ''})`}
+                                                    onClick={() => toggleTag(t)}
+                                                >
+                                                    {on && <Check />}
+                                                    {info?.label ?? t}
+                                                </Button>
+                                            );
+                                        })}
+                                    </div>
+                                    {tags.includes('two_sided') && <p className="text-xs text-muted-foreground">{TAG_LABELS.two_sided.hint}</p>}
+                                </section>
+
                                 <section className="flex flex-col gap-2">
                                     <h2 className="text-xs font-medium text-muted-foreground">On this page</h2>
                                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">

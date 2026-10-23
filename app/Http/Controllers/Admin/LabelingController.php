@@ -31,6 +31,7 @@ class LabelingController extends Controller
             'startId' => $start,
             'stats' => $this->stats(),
             'skipReasons' => LabelPage::SKIP_REASONS,
+            'tagNames' => LabelPage::TAGS,
             'langs' => TranslationController::READABLE_LANGS,
             'classifierUrl' => is_file(storage_path(self::CLASSIFIER)) ? route('admin.labeling.classifier') : null,
             'readerInstalled' => BrailleReader::installed(),
@@ -52,6 +53,7 @@ class LabelingController extends Controller
             'split' => $labelPage->split,
             'status' => $labelPage->status,
             'skip_reason' => $labelPage->skip_reason,
+            'tags' => $labelPage->tags ?? [],
             'priority' => $labelPage->priority,
             'issues' => $labelPage->issues,
             // [x1, y1, x2, y2, pattern, detector score, dot margin]
@@ -85,6 +87,8 @@ class LabelingController extends Controller
             'cells.*.4' => ['integer', 'min:1', 'max:63'],
             'edits' => ['nullable', 'array'],
             'edits.*' => ['integer', 'min:0'],
+            'tags' => ['nullable', 'array'],
+            'tags.*' => ['string', Rule::in(LabelPage::TAGS)],
             'seconds' => ['nullable', 'integer', 'min:0', 'max:7200'],
         ]);
 
@@ -94,6 +98,7 @@ class LabelingController extends Controller
                 round(min($width, (float) $c[2]), 1), round(min($height, (float) $c[3]), 1), (int) $c[4],
             ], $data['cells'])),
             'edits' => $data['edits'] ?? null,
+            'tags' => array_values(array_unique($data['tags'] ?? [])),
             'status' => 'done',
             'skip_reason' => null,
             'admin_id' => $request->user('admin')->id,
