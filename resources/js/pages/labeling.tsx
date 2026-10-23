@@ -1,6 +1,6 @@
 import { Head, usePage } from '@inertiajs/react';
 import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Keyboard, LoaderCircle, Maximize, Redo2, Sparkles, Trash2, Undo2, X } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { DotPad, Loupe } from '@/components/labeling/cell-panel';
 import { boxOf, editStats, isUnsure, match, readingOrder, typicalSize, type Box, type LabelCell, type Suggestion } from '@/components/labeling/cells';
@@ -94,15 +94,58 @@ function xsrf(): string {
     return m ? decodeURIComponent(m[1]) : '';
 }
 
+/** The session ran out (401) or its CSRF token with it (419): signing in again fixes it. */
+class SignedOut extends Error {}
+
 async function send<T>(url: string, method: string, body: unknown): Promise<T> {
     const response = await fetch(url, {
         method,
         headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-XSRF-TOKEN': xsrf() },
         body: JSON.stringify(body),
     });
+    if (response.status === 401 || response.status === 419) throw new SignedOut();
     const json = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(json.message ?? `Request failed with ${response.status}`);
     return json as T;
+}
+
+/**
+ * Unsaved work on a page, kept in this browser after every change so a lost
+ * session or a closed tab does not lose it. `base` is when the page was last
+ * saved: a draft older than a later save is dropped.
+ */
+interface Draft {
+    base: string | null;
+    savedAt: number;
+    cells: LabelCell[];
+    rejected: number[];
+}
+
+const draftKey = (id: number) => `labeling-draft:${id}`;
+
+function readDraft(id: number): Draft | null {
+    try {
+        const raw = localStorage.getItem(draftKey(id));
+        return raw ? (JSON.parse(raw) as Draft) : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeDraft(id: number, draft: Draft) {
+    try {
+        localStorage.setItem(draftKey(id), JSON.stringify(draft));
+    } catch {
+        // Storage full or blocked: the page still works, only without the safety net.
+    }
+}
+
+function clearDraft(id: number) {
+    try {
+        localStorage.removeItem(draftKey(id));
+    } catch {
+        // Nothing to clear.
+    }
 }
 
 function formatHours(seconds: number): string {
@@ -126,7 +169,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
     const [showDots, setShowDots] = useState(true);
     const [showHelp, setShowHelp] = useState(false);
     const [saving, setSaving] = useState(false);
-    const [notice, setNotice] = useState<string | null>(null);
+    const [notice, setNotice] = useState<ReactNode>(null);
+    const [restoredAt, setRestoredAt] = useState<number | null>(null);
     const [lang, setLang] = useState('EN');
     const [reading, setReading] = useState<{ text: string; braille: string } | null>(null);
     const [readingBusy, setReadingBusy] = useState(false);
@@ -142,6 +186,16 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
 
     const pageUrl = (id: number) => `${routes.labeling}/${id}`;
 
+    const signedOut = (
+        <span>
+            You were signed out. Your changes are kept in this browser:{' '}
+            <a href={routes.login} target="_blank" rel="noreferrer" className="font-medium underline">
+                sign in again
+            </a>{' '}
+            in the new tab, then come back and save.
+        </span>
+    );
+
     // Active time only: gaps over a minute are breaks, not labeling.
     const touch = useCallback(() => {
         const now = Date.now();
@@ -155,7 +209,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
         setLoading(true);
         setError(null);
         fetch(pageUrl(pageId), { headers: { Accept: 'application/json' } })
-            .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Request failed with ${r.status}`))))
+            .then((r) => (r.ok ? r.json() : Promise.reject(r.status === 401 ? new SignedOut() : new Error(`Request failed with ${r.status}`))))
             .then(({ data }: { data: PageData }) => {
                 if (cancelled) return;
                 let id = 1;
@@ -170,26 +224,52 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
                         if (sure[j][4] !== loaded[i].pattern) loaded[i].serverPattern = sure[j][4];
                     }
                 }
-                nextId.current = id;
                 initialCells.current = loaded;
+                // Unsaved work from before (a lost session, a closed tab) picks up where it stopped.
+                const draft = readDraft(data.id);
+                const restore = draft && draft.base === (data.labeled_at ?? null) ? draft : null;
+                if (draft && !restore) clearDraft(data.id);
+                const start = restore ? restore.cells : loaded;
+                nextId.current = Math.max(id, ...start.map((c) => c.id + 1));
                 undo.current = [];
                 redo.current = [];
                 active.current = { seconds: 0, last: Date.now() };
                 setPage(data);
-                setCells(loaded);
+                setCells(start);
                 setSelectedId(null);
-                setRejected(new Set());
+                setRejected(new Set(restore?.rejected ?? []));
                 setReading(null);
-                setDirty(false);
+                setDirty(Boolean(restore));
+                setRestoredAt(restore?.savedAt ?? null);
                 setLang(langs.includes(data.lang) ? data.lang : 'EN');
             })
-            .catch((e: Error) => !cancelled && setError(e.message))
+            .catch((e: Error) => !cancelled && (e instanceof SignedOut ? (setError(null), setNotice(signedOut)) : setError(e.message)))
             .finally(() => !cancelled && setLoading(false));
         return () => {
             cancelled = true;
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageId]);
+
+    // Every change goes to the draft, shortly after it is made.
+    useEffect(() => {
+        if (!page || !dirty) return;
+        const timer = window.setTimeout(
+            () => writeDraft(page.id, { base: page.labeled_at ?? null, savedAt: Date.now(), cells, rejected: [...rejected] }),
+            300,
+        );
+        return () => window.clearTimeout(timer);
+    }, [page, cells, rejected, dirty]);
+
+    const discardDraft = () => {
+        if (!page) return;
+        clearDraft(page.id);
+        undo.current.push(cellsRef.current);
+        setCells(initialCells.current);
+        setRejected(new Set());
+        setDirty(false);
+        setRestoredAt(null);
+    };
 
     useEffect(() => {
         if (pageId) window.history.replaceState(null, '', `${routes.labeling}?page=${pageId}`);
@@ -352,12 +432,14 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
                 edits: editStats(initialCells.current, cells),
                 seconds: Math.round(active.current.seconds),
             });
+            clearDraft(page.id);
+            setDirty(false);
             setStats(result.stats);
             setNotice(null);
             setPageId(result.next_id);
             if (!result.next_id) setPage(null);
         } catch (e) {
-            setNotice((e as Error).message);
+            setNotice(e instanceof SignedOut ? signedOut : (e as Error).message);
         } finally {
             setSaving(false);
         }
@@ -369,11 +451,13 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
         touch();
         try {
             const result = await send<{ next_id: number | null; stats: Stats }>(`${pageUrl(page.id)}/skip`, 'POST', { reason, seconds: Math.round(active.current.seconds) });
+            clearDraft(page.id);
+            setDirty(false);
             setStats(result.stats);
             setPageId(result.next_id);
             if (!result.next_id) setPage(null);
         } catch (e) {
-            setNotice((e as Error).message);
+            setNotice(e instanceof SignedOut ? signedOut : (e as Error).message);
         }
     };
 
@@ -387,7 +471,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
             });
             setReading(result.data);
         } catch (e) {
-            setNotice((e as Error).message);
+            setNotice(e instanceof SignedOut ? signedOut : (e as Error).message);
         } finally {
             setReadingBusy(false);
         }
@@ -612,6 +696,17 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, la
                     <aside className="flex w-80 shrink-0 flex-col gap-5 overflow-y-auto border-l p-4 text-sm">
                         {page && (
                             <>
+                                {restoredAt && (
+                                    <div className="flex items-center justify-between gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-xs">
+                                        <span>
+                                            Unsaved changes from{' '}
+                                            {new Date(restoredAt).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} restored.
+                                        </span>
+                                        <Button variant="ghost" size="xs" onClick={discardDraft}>
+                                            Discard
+                                        </Button>
+                                    </div>
+                                )}
                                 <section className="flex flex-col gap-2">
                                     <h2 className="text-xs font-medium text-muted-foreground">On this page</h2>
                                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
