@@ -23,6 +23,8 @@ export interface LabelCell extends Box {
     dotsByHand?: boolean;
     /** Box moved or resized by hand. */
     moved?: boolean;
+    /** Looked at and found right as the phone read it. */
+    checked?: boolean;
 }
 
 /** [x1, y1, x2, y2, pattern, score] from the OCR host. */
@@ -67,8 +69,13 @@ export function match(a: Box[], b: Box[], minIou = MATCH_IOU): [number, number][
     return pairs;
 }
 
+/** Changed or confirmed by hand: drawn green. */
+export function isChecked(c: LabelCell): boolean {
+    return c.origin !== 'model' || Boolean(c.dotsByHand || c.moved || c.checked);
+}
+
 export function isUnsure(c: LabelCell): boolean {
-    if (c.origin !== 'model' || c.dotsByHand) return false;
+    if (c.origin !== 'model' || c.dotsByHand || c.checked) return false;
     return (c.score ?? 1) < LOW_SCORE || (c.margin ?? 9) < LOW_MARGIN || c.serverPattern !== undefined;
 }
 
@@ -131,5 +138,6 @@ export function editStats(initial: LabelCell[], final: LabelCell[]): Record<stri
         from_server: final.filter((c, j) => !kept.has(j) && c.origin === 'server').length,
         dots_changed: pairs.filter(([i, j]) => model[i].pattern !== final[j].pattern).length,
         moved: pairs.filter(([i, j]) => iou(model[i], final[j]) < 0.9).length,
+        confirmed: final.filter((c) => c.checked && !c.dotsByHand && !c.moved).length,
     };
 }

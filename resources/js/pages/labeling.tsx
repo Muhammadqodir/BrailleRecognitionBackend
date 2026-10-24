@@ -3,7 +3,7 @@ import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Keyboard, LoaderCircle, Max
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { DotPad, Loupe } from '@/components/labeling/cell-panel';
-import { boxOf, editStats, isUnsure, match, readingOrder, typicalSize, type Box, type LabelCell, type Suggestion } from '@/components/labeling/cells';
+import { boxOf, editStats, isChecked, isUnsure, match, readingOrder, typicalSize, type Box, type LabelCell, type Suggestion } from '@/components/labeling/cells';
 import { classify, grayPhoto, snap, type GrayPhoto } from '@/components/labeling/dot-classifier';
 import { COLORS, Editor, type EditorHandle } from '@/components/labeling/editor';
 import { Badge } from '@/components/ui/badge';
@@ -85,6 +85,7 @@ const SHORTCUTS: [string, string][] = [
     ['Click a red dashed box', 'Take the server’s cell'],
     ['1 – 6', 'Toggle that dot of the selected cell'],
     ['Tab / Shift+Tab', 'Next / previous cell in reading order'],
+    ['V', 'The selected cell is right: mark it checked, go to the next unsure one'],
     ['U', 'Use the server’s dots for the selected cell'],
     ['C', 'Re-read the selected cell’s dots with the model'],
     ['A', 'Take all server suggestions'],
@@ -402,6 +403,38 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         [ordered, selectedId],
     );
 
+    /** The next unsure cell after [fromId] in reading order, wrapping round. */
+    const nextUnsure = useCallback(
+        (fromId: number | null, list: LabelCell[] = ordered) => {
+            const i = list.findIndex((c) => c.id === fromId);
+            for (let k = 1; k <= list.length; k++) {
+                const c = list[(Math.max(i, -1) + k + list.length) % list.length];
+                if (isUnsure(c) && c.id !== fromId) return c;
+            }
+            return null;
+        },
+        [ordered],
+    );
+
+    const goTo = useCallback((c: LabelCell | null) => {
+        if (!c) return;
+        setSelectedId(c.id);
+        editor.current?.reveal(c);
+    }, []);
+
+    /** The phone got this cell right: mark it checked and move on to the next one it was unsure of. */
+    const confirm = useCallback(
+        (id: number) => {
+            snapshot();
+            const list = ordered.map((c) => (c.id === id ? { ...c, checked: true } : c));
+            update(id, { checked: true });
+            const next = nextUnsure(id, list);
+            if (next) goTo(next);
+            else setSelectedId(null);
+        },
+        [ordered, snapshot, update, nextUnsure, goTo],
+    );
+
     const undoLast = useCallback(() => {
         const prev = undo.current.pop();
         if (!prev) return;
@@ -516,6 +549,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 if (p) void addAt(p.x, p.y);
             } else if (key === 'a') {
                 acceptAll();
+            } else if (key === 'v' && selected) {
+                confirm(selected.id);
             } else if (key === 'u' && selected?.serverPattern !== undefined) {
                 snapshot();
                 update(selected.id, { pattern: selected.serverPattern, dotsByHand: true });
@@ -547,7 +582,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [selected, toggleDot, step, remove, snapshot, update, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames]);
+    }, [selected, toggleDot, step, remove, snapshot, update, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -741,9 +776,9 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                 <section className="flex flex-col gap-2">
                                     <h2 className="text-xs font-medium text-muted-foreground">On this page</h2>
                                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                                        <Legend color={COLORS.model} label={`Phone · ${cells.filter((c) => c.origin === 'model' && !c.moved && !c.dotsByHand).length}`} />
+                                        <Legend color={COLORS.model} label={`Phone · ${cells.filter((c) => !isChecked(c) && !isUnsure(c)).length}`} />
                                         <Legend color={COLORS.unsure} label={`Unsure · ${unsureLeft}`} />
-                                        <Legend color={COLORS.human} label={`Checked · ${cells.filter((c) => c.origin !== 'model' || c.moved || c.dotsByHand).length}`} />
+                                        <Legend color={COLORS.human} label={`Checked · ${cells.filter(isChecked).length}`} />
                                         <Legend color={COLORS.server} dashed label={`Server only · ${suggestions.length}`} />
                                     </div>
                                     {suggestions.length > 0 && (
@@ -762,13 +797,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                             variant="ghost"
                                             size="xs"
                                             className="self-start"
-                                            onClick={() => {
-                                                const next = ordered.find((c) => isUnsure(c) && c.id !== selectedId) ?? ordered.find(isUnsure);
-                                                if (next) {
-                                                    setSelectedId(next.id);
-                                                    editor.current?.reveal(next);
-                                                }
-                                            }}
+                                            onClick={() => goTo(nextUnsure(selectedId))}
                                         >
                                             Go to the next unsure cell
                                         </Button>
@@ -805,7 +834,13 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                                     </span>
                                                 )}
                                             </div>
-                                            <div className="flex gap-1.5">
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {isUnsure(selected) && (
+                                                    <Button size="xs" onClick={() => confirm(selected.id)}>
+                                                        <Check />
+                                                        Correct (V)
+                                                    </Button>
+                                                )}
                                                 {classifierUrl && (
                                                     <Button
                                                         variant="outline"

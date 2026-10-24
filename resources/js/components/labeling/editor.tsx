@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
-import { dotPosition, isUnsure, type Box, type LabelCell, type Suggestion } from './cells';
+import { dotPosition, isChecked, isUnsure, type Box, type LabelCell, type Suggestion } from './cells';
 
 export const COLORS = {
     model: '#009AD1',
@@ -332,7 +332,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
                         ))}
                         {cells.map((c) => {
                             const selected = c.id === selectedId;
-                            const color = selected ? COLORS.selected : c.origin !== 'model' || c.dotsByHand || c.moved ? COLORS.human : isUnsure(c) ? COLORS.unsure : COLORS.model;
+                            const color = selected ? COLORS.selected : isChecked(c) ? COLORS.human : isUnsure(c) ? COLORS.unsure : COLORS.model;
                             const w = c.x2 - c.x1;
                             const h = c.y2 - c.y1;
                             const r = Math.min(w, h);
