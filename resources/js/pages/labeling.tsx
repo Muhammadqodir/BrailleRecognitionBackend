@@ -82,6 +82,7 @@ const SHORTCUTS: [string, string][] = [
     ['Click a box', 'Select it; drag to move, corners to resize'],
     ['Drag on the photo', 'Draw a new cell'],
     ['Double-click / N', 'Add a cell of the usual size, centred on its dots'],
+    ['B', 'Add a cell the size of the last one, next to the selected cell; drag it into place'],
     ['Click a red dashed box', 'Take the server’s cell'],
     ['1 – 6', 'Toggle that dot of the selected cell'],
     ['Tab / Shift+Tab', 'Next / previous cell in reading order'],
@@ -170,6 +171,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     const undo = useRef<LabelCell[][]>([]);
     const redo = useRef<LabelCell[][]>([]);
     const nextId = useRef(1);
+    /** The cell drawn, added or reshaped last: B copies its size. */
+    const lastBox = useRef<Box | null>(null);
     const editor = useRef<EditorHandle>(null);
     const gray = useRef<{ id: number; photo: Promise<GrayPhoto> } | null>(null);
     const active = useRef({ seconds: 0, last: Date.now() });
@@ -334,12 +337,48 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             snapshot();
             const id = nextId.current++;
             const cell: LabelCell = { ...box, id, pattern: 0, origin: 'human', ...from };
+            lastBox.current = box;
             setCells((cs) => [...cs, cell]);
             setSelectedId(id);
             if (read && !cell.pattern) void readDots([cell]);
             return id;
         },
         [snapshot, readDots],
+    );
+
+    /**
+     * A cell the size of the last one drawn or reshaped, just right of the
+     * selected cell (or of that last one), to be dragged into place: quicker
+     * than drawing when the boxes need adjusting anyway. Its dots are read
+     * again where it is dropped.
+     */
+    const addNext = useCallback(() => {
+        const ref = cellsRef.current.find((c) => c.id === selectedId) ?? lastBox.current;
+        const w = lastBox.current ? lastBox.current.x2 - lastBox.current.x1 : size.w;
+        const h = lastBox.current ? lastBox.current.y2 - lastBox.current.y1 : size.h;
+        let x1: number, cy: number;
+        if (ref) {
+            x1 = ref.x2 + (ref.x2 - ref.x1) * 0.3;
+            cy = (ref.y1 + ref.y2) / 2;
+        } else {
+            const p = editor.current?.pointer();
+            if (!p) return;
+            x1 = p.x - w / 2;
+            cy = p.y;
+        }
+        const box = { x1, y1: cy - h / 2, x2: x1 + w, y2: cy + h / 2 };
+        addCell(box);
+        editor.current?.reveal(box);
+    }, [selectedId, size, addCell]);
+
+    /** Deletes every cell of one colour at once, as one undo step. */
+    const removeWhere = useCallback(
+        (keep: (c: LabelCell) => boolean) => {
+            snapshot();
+            setCells((cs) => cs.filter(keep));
+            setSelectedId(null);
+        },
+        [snapshot],
     );
 
     /** A cell of the page's usual size at a point, centred on its dots by the model when it is available. */
@@ -544,6 +583,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 const dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;
                 snapshot();
                 update(selected.id, { x1: selected.x1 + dx, x2: selected.x2 + dx, y1: selected.y1 + dy, y2: selected.y2 + dy, moved: true });
+            } else if (key === 'b') {
+                addNext();
             } else if (key === 'n') {
                 const p = editor.current?.pointer();
                 if (p) void addAt(p.x, p.y);
@@ -582,7 +623,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [selected, toggleDot, step, remove, snapshot, update, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm]);
+    }, [selected, toggleDot, step, remove, snapshot, update, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -682,7 +723,11 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                 onSelect={setSelectedId}
                                 onBeginEdit={snapshot}
                                 onMove={(id, box) => update(id, { ...box, moved: true })}
-                                onEndMove={(id) => void readDots(cellsRef.current.filter((c) => c.id === id))}
+                                onEndMove={(id) => {
+                                    const moved = cellsRef.current.filter((c) => c.id === id);
+                                    if (moved[0]) lastBox.current = { x1: moved[0].x1, y1: moved[0].y1, x2: moved[0].x2, y2: moved[0].y2 };
+                                    void readDots(moved);
+                                }}
                                 onToggleDot={toggleDot}
                                 onCreate={(box) => addCell(box)}
                                 onCreateAt={(x, y) => void addAt(x, y)}
@@ -776,10 +821,26 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                 <section className="flex flex-col gap-2">
                                     <h2 className="text-xs font-medium text-muted-foreground">On this page</h2>
                                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                                        <Legend color={COLORS.model} label={`Phone · ${cells.filter((c) => !isChecked(c) && !isUnsure(c)).length}`} />
-                                        <Legend color={COLORS.unsure} label={`Unsure · ${unsureLeft}`} />
+                                        <Legend
+                                            color={COLORS.model}
+                                            label={`Phone · ${cells.filter((c) => !isChecked(c) && !isUnsure(c)).length}`}
+                                            onDelete={() => removeWhere((c) => isChecked(c) || isUnsure(c))}
+                                            deleteTitle="Delete all blue cells (the phone's sure ones)"
+                                        />
+                                        <Legend
+                                            color={COLORS.unsure}
+                                            label={`Unsure · ${unsureLeft}`}
+                                            onDelete={() => removeWhere((c) => !isUnsure(c))}
+                                            deleteTitle="Delete all yellow cells"
+                                        />
                                         <Legend color={COLORS.human} label={`Checked · ${cells.filter(isChecked).length}`} />
-                                        <Legend color={COLORS.server} dashed label={`Server only · ${suggestions.length}`} />
+                                        <Legend
+                                            color={COLORS.server}
+                                            dashed
+                                            label={`Server only · ${suggestions.length}`}
+                                            onDelete={() => setRejected(new Set([...rejected, ...suggestions.map((x) => x.index)]))}
+                                            deleteTitle="Hide all red suggestions"
+                                        />
                                     </div>
                                     {suggestions.length > 0 && (
                                         <div className="flex gap-1.5">
@@ -912,11 +973,16 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     );
 }
 
-function Legend({ color, label, dashed }: { color: string; label: string; dashed?: boolean }) {
+function Legend({ color, label, dashed, onDelete, deleteTitle }: { color: string; label: string; dashed?: boolean; onDelete?: () => void; deleteTitle?: string }) {
     return (
         <span className="flex items-center gap-1.5">
-            <span className="size-3 rounded-sm border-2" style={{ borderColor: color, borderStyle: dashed ? 'dashed' : 'solid' }} />
+            <span className="size-3 shrink-0 rounded-sm border-2" style={{ borderColor: color, borderStyle: dashed ? 'dashed' : 'solid' }} />
             {label}
+            {onDelete && !label.endsWith(' 0') && (
+                <button type="button" title={deleteTitle} onClick={onDelete} className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-destructive">
+                    <Trash2 className="size-3" />
+                </button>
+            )}
         </span>
     );
 }
