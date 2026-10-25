@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
-import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Keyboard, LoaderCircle, Maximize, Redo2, RotateCw, Sparkles, Trash2, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Keyboard, LoaderCircle, Maximize, Redo2, RotateCw, ScanSearch, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { DotPad, Loupe } from '@/components/labeling/cell-panel';
@@ -114,6 +114,7 @@ const SHORTCUTS: [string, string][] = [
     ['Delete', 'Delete the selected cells; the red boxes under them go too, also when cells are moved'],
     ['Arrows', 'Nudge (Shift: 5 px); Alt + arrows: resize'],
     ['R', 'Turn the photo a quarter clockwise, cells and all'],
+    ['M', 'Read the whole page again with the model, as it is turned now (replaces the cells; ⌘Z undoes)'],
     ['H / D', 'Hide boxes / dots'],
     ['Space + drag, scroll', 'Pan'],
     ['Pinch, ⌘ + scroll, + / −', 'Zoom; F fits'],
@@ -505,6 +506,37 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         void readDots(turnedCells.filter((c) => !c.dotsByHand));
     }, [page, readDots, setSelectedId, touch]);
 
+    /**
+     * Runs the model on the page as it is turned now and starts over from its
+     * cells: for photos that came in sideways, which it reads badly until turned.
+     * Undoable; a turn made while it runs wins.
+     */
+    const rereadPage = useCallback(async () => {
+        const url = turnedUrl();
+        const photo = loadGray();
+        if (!page || !detectorUrl || !classifierUrl || !url || !photo || source.kind === 'running') return;
+        const r = rotationRef.current;
+        const t0 = performance.now();
+        setSource({ kind: 'running' });
+        try {
+            const rows = await detectCells(detectorUrl, classifierUrl, await url, await photo);
+            if (rotationRef.current !== r) {
+                setSource({ kind: 'phone' });
+                return;
+            }
+            snapshot();
+            const fresh = startCells(rows, pageSuggestions, nextId.current);
+            nextId.current += fresh.length;
+            setCells(fresh);
+            setSelectedId(null);
+            setRejected(new Set());
+            setSource({ kind: 'model', cells: fresh.length, seconds: (performance.now() - t0) / 1000 });
+        } catch (e) {
+            setSource({ kind: 'failed' });
+            setNotice(`The model could not read the page: ${(e as Error).message}`);
+        }
+    }, [page, detectorUrl, classifierUrl, turnedUrl, loadGray, source.kind, snapshot, pageSuggestions, setSelectedId]);
+
     const addCell = useCallback(
         (box: Box, from?: Partial<LabelCell>, read = true) => {
             snapshot();
@@ -792,6 +824,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 addNext();
             } else if (key === 'r') {
                 rotate();
+            } else if (key === 'm') {
+                void rereadPage();
             } else if (key === 'n') {
                 const p = editor.current?.pointer();
                 if (p) void addAt(p.x, p.y);
@@ -830,7 +864,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [selected, group, rejectUnder, toggleDot, step, remove, snapshot, update, updateGroup, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext, rotate, setSelectedId]);
+    }, [selected, group, rejectUnder, toggleDot, step, remove, snapshot, update, updateGroup, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext, rotate, rereadPage, setSelectedId]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -899,7 +933,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                             {page.status === 'done' ? `Labeled${page.labeled_by ? ` by ${page.labeled_by}` : ''}` : `Skipped: ${SKIP_LABELS[page.skip_reason ?? ''] ?? page.skip_reason}`}
                         </Badge>
                     )}
-                    {page.status === 'todo' && source.kind !== 'phone' && (
+                    {source.kind !== 'phone' && (
                         <Badge variant={source.kind === 'failed' ? 'destructive' : 'secondary'} className="gap-1">
                             {source.kind === 'running' && <LoaderCircle className="size-3 animate-spin" />}
                             {source.kind === 'running'
@@ -975,6 +1009,17 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                             <Button variant="ghost" size="icon-sm" title="Turn the photo clockwise (R)" onClick={rotate} disabled={!page}>
                                 <RotateCw />
                             </Button>
+                            {detectorUrl && classifierUrl && (
+                                <Button
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    title="Read the page again with the model, as turned now (M)"
+                                    onClick={() => void rereadPage()}
+                                    disabled={!page || source.kind === 'running'}
+                                >
+                                    {source.kind === 'running' ? <LoaderCircle className="animate-spin" /> : <ScanSearch />}
+                                </Button>
+                            )}
                             <Button variant="ghost" size="icon-sm" title="Fit (F)" onClick={() => editor.current?.fit()}>
                                 <Maximize />
                             </Button>
