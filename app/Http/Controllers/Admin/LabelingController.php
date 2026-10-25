@@ -15,13 +15,17 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * Hand-labeling phone scans for the next detector and dot classifier: the
- * page starts from the phone's own cells, suggests what the OCR host found
- * that the phone did not, and the admin corrects it.
+ * page starts from the phone's own cells (or, when DETECTOR is installed, from
+ * a newer model run in the browser), suggests what the OCR host found that
+ * the phone did not, and the admin corrects it.
  */
 class LabelingController extends Controller
 {
     /** Where the dot classifier the page runs in the browser lives (not in git: the repo is public). */
     public const CLASSIFIER = 'app/labeling/dot_classifier.onnx';
+
+    /** A newer cell detector than the phone's: when installed, unlabeled pages start from its cells. */
+    public const DETECTOR = 'app/labeling/detector.onnx';
 
     public function index(Request $request): Response
     {
@@ -33,7 +37,8 @@ class LabelingController extends Controller
             'skipReasons' => LabelPage::SKIP_REASONS,
             'tagNames' => LabelPage::TAGS,
             'langs' => TranslationController::READABLE_LANGS,
-            'classifierUrl' => is_file(storage_path(self::CLASSIFIER)) ? route('admin.labeling.classifier') : null,
+            'classifierUrl' => $this->modelUrl(self::CLASSIFIER, 'admin.labeling.classifier'),
+            'detectorUrl' => $this->modelUrl(self::DETECTOR, 'admin.labeling.detector'),
             'readerInstalled' => BrailleReader::installed(),
         ]);
     }
@@ -161,9 +166,27 @@ class LabelingController extends Controller
 
     public function classifier(): BinaryFileResponse
     {
-        abort_unless(is_file(storage_path(self::CLASSIFIER)), 404);
+        return $this->modelFile(self::CLASSIFIER);
+    }
 
-        return response()->file(storage_path(self::CLASSIFIER), [
+    public function detector(): BinaryFileResponse
+    {
+        return $this->modelFile(self::DETECTOR);
+    }
+
+    /** The model's URL with its file time, so a replaced model is not served from the browser cache. */
+    private function modelUrl(string $file, string $route): ?string
+    {
+        $path = storage_path($file);
+
+        return is_file($path) ? route($route, ['v' => filemtime($path)]) : null;
+    }
+
+    private function modelFile(string $file): BinaryFileResponse
+    {
+        abort_unless(is_file(storage_path($file)), 404);
+
+        return response()->file(storage_path($file), [
             'Content-Type' => 'application/octet-stream',
             'Cache-Control' => 'private, max-age=86400',
         ]);

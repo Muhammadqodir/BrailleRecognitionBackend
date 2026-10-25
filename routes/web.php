@@ -58,6 +58,7 @@ Route::prefix(config('braille.admin_path'))
 
             Route::get('labeling', [LabelingController::class, 'index'])->name('labeling');
             Route::get('labeling/classifier.onnx', [LabelingController::class, 'classifier'])->name('labeling.classifier');
+            Route::get('labeling/detector.onnx', [LabelingController::class, 'detector'])->name('labeling.detector');
             Route::get('labeling/{labelPage}', [LabelingController::class, 'show'])->name('labeling.show');
             Route::put('labeling/{labelPage}', [LabelingController::class, 'save'])->name('labeling.save');
             Route::post('labeling/{labelPage}/skip', [LabelingController::class, 'skip'])->name('labeling.skip');

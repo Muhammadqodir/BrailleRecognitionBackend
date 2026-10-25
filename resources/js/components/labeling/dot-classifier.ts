@@ -16,7 +16,7 @@ type Session = import('onnxruntime-web/wasm').InferenceSession;
 let ortPromise: Promise<Ort> | null = null;
 const sessions = new Map<string, Promise<Session>>();
 
-function loadOrt(): Promise<Ort> {
+export function loadOrt(): Promise<Ort> {
     // The CPU-only build (no WebGPU), loaded on first use; one thread is plenty for a few crops.
     ortPromise ??= import('onnxruntime-web/wasm').then((ort) => {
         ort.env.wasm.numThreads = 1;
@@ -25,7 +25,7 @@ function loadOrt(): Promise<Ort> {
     return ortPromise;
 }
 
-function session(url: string): Promise<Session> {
+export function session(url: string): Promise<Session> {
     let s = sessions.get(url);
     if (!s) {
         s = loadOrt().then((ort) => ort.InferenceSession.create(url, { executionProviders: ['wasm'] }));

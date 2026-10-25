@@ -17,6 +17,7 @@ import {
     type LabelCell,
     type Suggestion,
 } from '@/components/labeling/cells';
+import { detectCells } from '@/components/labeling/detector';
 import { classify, grayPhoto, snap, turnedPhoto, type GrayPhoto } from '@/components/labeling/dot-classifier';
 import { COLORS, Editor, type EditorHandle } from '@/components/labeling/editor';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +50,8 @@ interface LabelingProps {
     tagNames: string[];
     langs: string[];
     classifierUrl: string | null;
+    /** The newer detector a page starts from instead of the phone's cells, when installed. */
+    detectorUrl: string | null;
     readerInstalled: boolean;
 }
 
@@ -167,7 +170,19 @@ function formatHours(seconds: number): string {
     return h ? `${h} h ${m} min` : `${m} min`;
 }
 
-export default function Labeling({ startId, stats: initialStats, skipReasons, tagNames, langs, classifierUrl, readerInstalled }: LabelingProps) {
+/** The phone's cells (or a newer model's, same shape) as the page starts from them. */
+function startCells(rows: number[][], suggestions: Suggestion[], firstId: number): LabelCell[] {
+    let id = firstId;
+    const cells: LabelCell[] = rows.map((c) => ({ ...boxOf(c), id: id++, pattern: c[4], origin: 'model', score: c[5], margin: c[6] }));
+    // Where both found a cell but read different dots, keep the server's reading to offer.
+    const sure = suggestions.filter((s) => s[5] >= 0.5);
+    for (const [i, j] of match(cells, sure.map(boxOf))) {
+        if (sure[j][4] !== cells[i].pattern) cells[i].serverPattern = sure[j][4];
+    }
+    return cells;
+}
+
+export default function Labeling({ startId, stats: initialStats, skipReasons, tagNames, langs, classifierUrl, detectorUrl, readerInstalled }: LabelingProps) {
     const { routes } = usePage<SharedProps>().props;
     const [pageId, setPageId] = useState<number | null>(startId);
     const [page, setPage] = useState<PageData | null>(null);
@@ -201,6 +216,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     const [reading, setReading] = useState<{ text: string; braille: string } | null>(null);
     const [readingBusy, setReadingBusy] = useState(false);
     const [dirty, setDirty] = useState(false);
+    /** Where the page's starting cells came from: the phone, or the newer model run here. */
+    const [source, setSource] = useState<{ kind: 'phone' | 'running' | 'model' | 'failed'; cells?: number; seconds?: number }>({ kind: 'phone' });
     const undo = useRef<LabelCell[][]>([]);
     const redo = useRef<LabelCell[][]>([]);
     const nextId = useRef(1);
@@ -248,12 +265,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                     loaded = data.cells.map((c) => ({ ...boxOf(c), id: id++, pattern: c[4], origin: 'human', dotsByHand: true }));
                     loadedRotation = data.rotation ?? 0;
                 } else {
-                    loaded = data.model_cells.map((c) => ({ ...boxOf(c), id: id++, pattern: c[4], origin: 'model', score: c[5], margin: c[6] }));
-                    // Where both found a cell but read different dots, keep the server's reading to offer.
-                    const sure = data.suggestions.filter((s) => s[5] >= 0.5);
-                    for (const [i, j] of match(loaded, sure.map(boxOf))) {
-                        if (sure[j][4] !== loaded[i].pattern) loaded[i].serverPattern = sure[j][4];
-                    }
+                    loaded = startCells(data.model_cells, data.suggestions, id);
+                    id += loaded.length;
                 }
                 initialCells.current = loaded;
                 initialRotation.current = loadedRotation;
@@ -276,6 +289,30 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 setDirty(Boolean(restore));
                 setRestoredAt(restore?.savedAt ?? null);
                 setLang(langs.includes(data.lang) ? data.lang : 'EN');
+
+                // An unlabeled page starts from the newer model's cells, unless work on it was already restored.
+                const fresh = !data.cells && !restore && data.photo_url;
+                setSource({ kind: fresh && detectorUrl && classifierUrl ? 'running' : 'phone' });
+                if (fresh && detectorUrl && classifierUrl) {
+                    const t0 = performance.now();
+                    grayPhoto(data.photo_url!, data.width, data.height)
+                        .then((g) => detectCells(detectorUrl, classifierUrl, data.photo_url!, g))
+                        .then((rows) => {
+                            if (cancelled) return;
+                            // Edits made while it ran win: the newer cells are only taken on an untouched page.
+                            if (undo.current.length || cellsRef.current !== start) {
+                                setSource({ kind: 'phone' });
+                                return;
+                            }
+                            const fromModel = startCells(rows, data.suggestions, 1);
+                            initialCells.current = fromModel;
+                            setSource({ kind: 'model', cells: fromModel.length, seconds: (performance.now() - t0) / 1000 });
+                            nextId.current = fromModel.length + 1;
+                            setCells(fromModel);
+                            setSelectedId(null);
+                        })
+                        .catch(() => !cancelled && setSource({ kind: 'failed' }));
+                }
             })
             .catch((e: Error) => !cancelled && (e instanceof SignedOut ? (setError(null), setNotice(signedOut)) : setError(e.message)))
             .finally(() => !cancelled && setLoading(false));
@@ -862,6 +899,16 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                             {page.status === 'done' ? `Labeled${page.labeled_by ? ` by ${page.labeled_by}` : ''}` : `Skipped: ${SKIP_LABELS[page.skip_reason ?? ''] ?? page.skip_reason}`}
                         </Badge>
                     )}
+                    {page.status === 'todo' && source.kind !== 'phone' && (
+                        <Badge variant={source.kind === 'failed' ? 'destructive' : 'secondary'} className="gap-1">
+                            {source.kind === 'running' && <LoaderCircle className="size-3 animate-spin" />}
+                            {source.kind === 'running'
+                                ? 'New model reading…'
+                                : source.kind === 'model'
+                                  ? `New model · ${source.cells} cells · ${source.seconds?.toFixed(1)} s`
+                                  : 'New model failed: phone cells'}
+                        </Badge>
+                    )}
                     <span>
                         Page #{page.id} · scan {page.translation_id}
                     </span>
@@ -1005,9 +1052,9 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                                         <Legend
                                             color={COLORS.model}
-                                            label={`Phone · ${cells.filter((c) => !isChecked(c) && !isUnsure(c)).length}`}
+                                            label={`${source.kind === 'model' ? 'Model' : 'Phone'} · ${cells.filter((c) => !isChecked(c) && !isUnsure(c)).length}`}
                                             onDelete={() => removeWhere((c) => isChecked(c) || isUnsure(c))}
-                                            deleteTitle="Delete all blue cells (the phone's sure ones)"
+                                            deleteTitle={`Delete all blue cells (the ${source.kind === 'model' ? 'model' : 'phone'}'s sure ones)`}
                                         />
                                         <Legend
                                             color={COLORS.unsure}
@@ -1086,7 +1133,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                             <DotPad pattern={selected.pattern} serverPattern={selected.serverPattern} onToggle={(d) => toggleDot(selected.id, d)} />
                                             <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                                                 <span>
-                                                    {selected.origin === 'model' ? 'Found by the phone' : selected.origin === 'server' ? 'Taken from the server' : 'Added by hand'}
+                                                    {selected.origin === 'model' ? (source.kind === 'model' ? 'Found by the new model' : 'Found by the phone') : selected.origin === 'server' ? 'Taken from the server' : 'Added by hand'}
                                                     {selected.score !== undefined && ` · detector ${selected.score.toFixed(2)}`}
                                                     {selected.margin !== undefined && Number.isFinite(selected.margin) && ` · dots ${selected.margin.toFixed(1)}`}
                                                 </span>
