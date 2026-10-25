@@ -92,7 +92,7 @@ const SHORTCUTS: [string, string][] = [
     ['U', 'Use the server’s dots for the selected cell'],
     ['C', 'Re-read the selected cell’s dots with the model'],
     ['A', 'Take all server suggestions'],
-    ['Delete', 'Delete the selected cells, and the red boxes under them'],
+    ['Delete', 'Delete the selected cells; the red boxes under them go too, also when cells are moved'],
     ['Arrows', 'Nudge (Shift: 5 px); Alt + arrows: resize'],
     ['H / D', 'Hide boxes / dots'],
     ['Space + drag, scroll', 'Pan'],
@@ -635,6 +635,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0;
                 const dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;
                 snapshot();
+                rejectUnder(group);
                 if (e.altKey) {
                     // Alt + arrows: wider / narrower, taller / shorter, keeping the top-left corner.
                     updateGroup((c) => ({ x2: Math.max(c.x2 + dx, c.x1 + 2), y2: Math.max(c.y2 + dy, c.y1 + 2), moved: true }));
@@ -681,7 +682,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [selected, group, toggleDot, step, remove, snapshot, update, updateGroup, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext, setSelectedId]);
+    }, [selected, group, rejectUnder, toggleDot, step, remove, snapshot, update, updateGroup, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext, setSelectedId]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -786,7 +787,9 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                     const byId = new Map(boxes.map((b) => [b.id, b.box]));
                                     setCells((cs) => cs.map((c) => (byId.has(c.id) ? { ...c, ...byId.get(c.id), moved: true } : c)));
                                 }}
-                                onEndMove={(ids) => {
+                                onEndMove={(ids, from) => {
+                                    // The red box the cell sat on was the same cell: it goes with it.
+                                    rejectUnder(from);
                                     const moved = cellsRef.current.filter((c) => ids.includes(c.id));
                                     const last = moved.find((c) => c.id === selectedId) ?? moved[0];
                                     if (last) lastBox.current = { x1: last.x1, y1: last.y1, x2: last.x2, y2: last.y2 };

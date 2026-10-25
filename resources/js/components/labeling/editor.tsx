@@ -39,7 +39,8 @@ interface EditorProps {
     /** A drag is about to change cells: snapshot for undo. */
     onBeginEdit: () => void;
     onMove: (boxes: { id: number; box: Box }[]) => void;
-    onEndMove: (ids: number[]) => void;
+    /** A drag ended: the cells it changed, and where they were before it. */
+    onEndMove: (ids: number[], from: Box[]) => void;
     onToggleDot: (id: number, dot: number) => void;
     onCreate: (box: Box) => void;
     onCreateAt: (x: number, y: number) => void;
@@ -314,7 +315,10 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
         const p = latest.current;
         if (!space.current) setPanning(false);
         if (!d) return;
-        if ((d.kind === 'move' || d.kind === 'resize') && d.started) p.onEndMove(d.boxes.map((b) => b.id));
+        if ((d.kind === 'move' || d.kind === 'resize') && d.started) p.onEndMove(
+                d.boxes.map((b) => b.id),
+                d.boxes.map((b) => b.box),
+            );
         if (d.kind === 'draw') {
             if (d.marquee) {
                 if (drawBox) p.onSelectBox(drawBox);
