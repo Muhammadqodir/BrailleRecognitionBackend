@@ -54,6 +54,8 @@ class LabelingController extends Controller
             'status' => $labelPage->status,
             'skip_reason' => $labelPage->skip_reason,
             'tags' => $labelPage->tags ?? [],
+            // Clockwise; saved cells are in the turned photo, model cells and suggestions are not.
+            'rotation' => $labelPage->rotation ?? 0,
             'priority' => $labelPage->priority,
             'issues' => $labelPage->issues,
             // [x1, y1, x2, y2, pattern, detector score, dot margin]
@@ -76,8 +78,12 @@ class LabelingController extends Controller
     {
         $translation = $labelPage->translation;
         [, $width, $height] = LabelQueue::modelCells($translation);
+        // Cells come in the turned photo's pixels.
+        $rotation = in_array((int) $request->input('rotation'), LabelPage::ROTATIONS, true) ? (int) $request->input('rotation') : 0;
+        [$width, $height] = LabelPage::frame($width, $height, $rotation);
 
         $data = $request->validate([
+            'rotation' => ['nullable', 'integer', Rule::in(LabelPage::ROTATIONS)],
             'cells' => ['present', 'array', 'max:3000'],
             'cells.*' => ['array', 'size:5'],
             'cells.*.0' => ['numeric', 'min:-2', "max:{$width}"],
@@ -99,6 +105,7 @@ class LabelingController extends Controller
             ], $data['cells'])),
             'edits' => $data['edits'] ?? null,
             'tags' => array_values(array_unique($data['tags'] ?? [])),
+            'rotation' => $rotation,
             'status' => 'done',
             'skip_reason' => null,
             'admin_id' => $request->user('admin')->id,
@@ -135,11 +142,13 @@ class LabelingController extends Controller
             'cells' => ['present', 'array', 'max:3000'],
             'cells.*' => ['array', 'size:5'],
             'cells.*.*' => ['numeric'],
+            'rotation' => ['nullable', 'integer', Rule::in(LabelPage::ROTATIONS)],
         ]);
         if (! BrailleReader::installed()) {
             return response()->json(['message' => 'The braille reader is not installed on this server.'], 503);
         }
         [, $width, $height] = LabelQueue::modelCells($labelPage->translation);
+        [$width, $height] = LabelPage::frame($width, $height, (int) ($data['rotation'] ?? 0));
 
         try {
             return response()->json(['data' => BrailleReader::read($data['cells'], $width, $height, $data['lang'])]);

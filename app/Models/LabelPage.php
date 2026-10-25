@@ -21,14 +21,28 @@ class LabelPage extends Model
 
     public const SKIP_REASONS = ['not_braille', 'unreadable', 'rotated', 'duplicate', 'other'];
 
+    /** Clockwise turns of the photo the labeler can choose. */
+    public const ROTATIONS = [0, 90, 180, 270];
+
     protected $fillable = [
         'translation_id', 'split', 'status', 'skip_reason', 'priority', 'issues',
-        'suggestions', 'cells', 'edits', 'tags', 'admin_id', 'seconds', 'labeled_at',
+        'suggestions', 'cells', 'edits', 'tags', 'rotation', 'admin_id', 'seconds', 'labeled_at',
     ];
+
+    /**
+     * The size of the picture the cells are in: the photo's own size, turned.
+     *
+     * @return array{0: int|float, 1: int|float}
+     */
+    public static function frame(int|float $width, int|float $height, int $rotation): array
+    {
+        return $rotation % 180 === 0 ? [$width, $height] : [$height, $width];
+    }
 
     protected function casts(): array
     {
         return [
+            'rotation' => 'integer',
             'priority' => 'float',
             'issues' => 'array',
             'edits' => 'array',

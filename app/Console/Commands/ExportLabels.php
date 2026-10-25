@@ -35,8 +35,10 @@ class ExportLabels extends Command
 
                     continue;
                 }
-                // Cells are in the frame the phone recognised; the file is the same picture.
+                // Cells are in the frame the phone recognised, turned as the labeler turned it; the file is the same picture.
                 [, $width, $height] = LabelQueue::modelCells($page->translation);
+                $rotation = $page->rotation ?? 0;
+                [$width, $height] = LabelPage::frame($width, $height, $rotation);
                 $stem = 'hl_'.pathinfo($photo, PATHINFO_FILENAME);
                 $cells = $page->cellList();
 
@@ -62,7 +64,7 @@ class ExportLabels extends Command
                     File::ensureDirectoryExists("{$base}/{$kind}{$sub}");
                 }
 
-                File::copy(Storage::disk('public')->path($photo), "{$base}/images{$sub}/{$stem}.jpg");
+                $this->writeImage(Storage::disk('public')->path($photo), "{$base}/images{$sub}/{$stem}.jpg", $rotation);
                 File::put("{$base}/patterns{$sub}/{$stem}.patterns.json", json_encode($patterns));
                 if ($split) {
                     File::put("{$base}/labels{$sub}/{$stem}.txt", implode('', array_map(fn ($b) => "0 {$b[0]} {$b[1]} {$b[2]} {$b[3]}\n", $boxes)));
@@ -76,5 +78,21 @@ class ExportLabels extends Command
         $this->info(json_encode($counts));
 
         return self::SUCCESS;
+    }
+
+    /** Copies the photo, turned clockwise by $rotation degrees when the labeler turned it. */
+    private function writeImage(string $from, string $to, int $rotation): void
+    {
+        if ($rotation === 0) {
+            File::copy($from, $to);
+
+            return;
+        }
+        $image = imagecreatefromstring((string) File::get($from));
+        if ($image === false) {
+            throw new \RuntimeException("Cannot read {$from}");
+        }
+        // GD turns counter-clockwise.
+        imagejpeg(imagerotate($image, 360 - $rotation, 0), $to, 95);
     }
 }

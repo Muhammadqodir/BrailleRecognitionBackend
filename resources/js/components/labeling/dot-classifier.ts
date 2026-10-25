@@ -1,4 +1,4 @@
-import type { Box } from './cells';
+import { turnedSize, turnMatrix, type Box } from './cells';
 
 /**
  * The app's dot classifier, run in the browser so a box drawn or moved by hand
@@ -33,6 +33,28 @@ function session(url: string): Promise<Session> {
         sessions.set(url, s);
     }
     return s;
+}
+
+/**
+ * The photo turned clockwise by [rotation], as a local URL the page shows and
+ * reads like the photo itself ([width] x [height] is the unturned size the cells use).
+ */
+export async function turnedPhoto(url: string, width: number, height: number, rotation: number): Promise<string> {
+    if (rotation === 0) return url;
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+    await img.decode();
+    const { w, h } = turnedSize(width, height, rotation);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    ctx.setTransform(...turnMatrix(rotation, width, height));
+    ctx.drawImage(img, 0, 0, width, height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.95));
+    if (!blob) throw new Error('The photo could not be turned');
+    return URL.createObjectURL(blob);
 }
 
 /** The photo as grayscale in the cells' coordinate system (OpenCV's BGR2GRAY weights). */

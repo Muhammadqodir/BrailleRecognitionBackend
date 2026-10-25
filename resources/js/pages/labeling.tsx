@@ -1,10 +1,23 @@
 import { Head, usePage } from '@inertiajs/react';
-import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Keyboard, LoaderCircle, Maximize, Redo2, Sparkles, Trash2, Undo2, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Keyboard, LoaderCircle, Maximize, Redo2, RotateCw, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { DotPad, Loupe } from '@/components/labeling/cell-panel';
-import { boxOf, editStats, isChecked, isUnsure, match, readingOrder, typicalSize, type Box, type LabelCell, type Suggestion } from '@/components/labeling/cells';
-import { classify, grayPhoto, snap, type GrayPhoto } from '@/components/labeling/dot-classifier';
+import {
+    boxOf,
+    editStats,
+    isChecked,
+    isUnsure,
+    match,
+    readingOrder,
+    turnBox,
+    turnedSize,
+    typicalSize,
+    type Box,
+    type LabelCell,
+    type Suggestion,
+} from '@/components/labeling/cells';
+import { classify, grayPhoto, snap, turnedPhoto, type GrayPhoto } from '@/components/labeling/dot-classifier';
 import { COLORS, Editor, type EditorHandle } from '@/components/labeling/editor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,12 +56,15 @@ interface PageData {
     id: number;
     translation_id: number;
     photo_url: string | null;
+    /** The photo's own size, unturned: model cells and suggestions are in it. */
     width: number;
     height: number;
     split: 'train' | 'test';
     status: 'todo' | 'done' | 'skipped';
     skip_reason: string | null;
     tags: string[];
+    /** Clockwise turn the saved cells are in. */
+    rotation: number;
     priority: number;
     issues: Record<string, number> | null;
     model_cells: number[][];
@@ -94,6 +110,7 @@ const SHORTCUTS: [string, string][] = [
     ['A', 'Take all server suggestions'],
     ['Delete', 'Delete the selected cells; the red boxes under them go too, also when cells are moved'],
     ['Arrows', 'Nudge (Shift: 5 px); Alt + arrows: resize'],
+    ['R', 'Turn the photo a quarter clockwise, cells and all'],
     ['H / D', 'Hide boxes / dots'],
     ['Space + drag, scroll', 'Pan'],
     ['Pinch, ⌘ + scroll, + / −', 'Zoom; F fits'],
@@ -113,6 +130,8 @@ interface Draft {
     cells: LabelCell[];
     rejected: number[];
     tags?: string[];
+    /** The turn the draft's cells are in. */
+    rotation?: number;
 }
 
 const draftKey = (id: number) => `labeling-draft:${id}`;
@@ -156,7 +175,9 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     const [error, setError] = useState<string | null>(null);
     const [stats, setStats] = useState(initialStats);
     const [cells, setCells] = useState<LabelCell[]>([]);
+    /** The cells the page opened with, and the turn they are in. */
     const initialCells = useRef<LabelCell[]>([]);
+    const initialRotation = useRef(0);
     /** Selected cell ids, the last one selected last: it is the one the panel shows. */
     const [selection, setSelection] = useState<number[]>([]);
     const selectedId = selection.length ? selection[selection.length - 1] : null;
@@ -164,6 +185,12 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     const setSelectedId = useCallback((id: number | null) => setSelection(id === null ? [] : [id]), []);
     const [rejected, setRejected] = useState<Set<number>>(new Set());
     const [tags, setTags] = useState<string[]>([]);
+    /** How far the photo is turned clockwise: the cells are in the turned photo. */
+    const [rotation, setRotation] = useState(0);
+    const rotationRef = useRef(rotation);
+    rotationRef.current = rotation;
+    /** The photo as shown: the file itself, or a turned copy of it. */
+    const [shownUrl, setShownUrl] = useState<string | null>(null);
     const [showBoxes, setShowBoxes] = useState(true);
     const [showDots, setShowDots] = useState(true);
     const [showHelp, setShowHelp] = useState(false);
@@ -180,7 +207,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     /** The cell drawn, added or reshaped last: B copies its size. */
     const lastBox = useRef<Box | null>(null);
     const editor = useRef<EditorHandle>(null);
-    const gray = useRef<{ id: number; photo: Promise<GrayPhoto> } | null>(null);
+    const turned = useRef<{ key: string; url: Promise<string> } | null>(null);
+    const gray = useRef<{ key: string; photo: Promise<GrayPhoto> } | null>(null);
     const active = useRef({ seconds: 0, last: Date.now() });
     const cellsRef = useRef(cells);
     cellsRef.current = cells;
@@ -215,8 +243,10 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 if (cancelled) return;
                 let id = 1;
                 let loaded: LabelCell[];
+                let loadedRotation = 0;
                 if (data.cells) {
                     loaded = data.cells.map((c) => ({ ...boxOf(c), id: id++, pattern: c[4], origin: 'human', dotsByHand: true }));
+                    loadedRotation = data.rotation ?? 0;
                 } else {
                     loaded = data.model_cells.map((c) => ({ ...boxOf(c), id: id++, pattern: c[4], origin: 'model', score: c[5], margin: c[6] }));
                     // Where both found a cell but read different dots, keep the server's reading to offer.
@@ -226,6 +256,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                     }
                 }
                 initialCells.current = loaded;
+                initialRotation.current = loadedRotation;
                 // Unsaved work from before (a lost session, a closed tab) picks up where it stopped.
                 const draft = readDraft(data.id);
                 const restore = draft && draft.base === (data.labeled_at ?? null) ? draft : null;
@@ -236,6 +267,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 redo.current = [];
                 active.current = { seconds: 0, last: Date.now() };
                 setPage(data);
+                setRotation(restore ? (restore.rotation ?? 0) : loadedRotation);
                 setCells(start);
                 setSelectedId(null);
                 setRejected(new Set(restore?.rejected ?? []));
@@ -253,21 +285,52 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pageId]);
 
+    /** The photo turned as it is now, made once per page and turn. */
+    const turnedUrl = useCallback((): Promise<string> | null => {
+        if (!page?.photo_url) return null;
+        const r = rotationRef.current;
+        const key = `${page.id}:${r}`;
+        if (turned.current?.key !== key) turned.current = { key, url: turnedPhoto(page.photo_url, page.width, page.height, r) };
+        return turned.current.url;
+    }, [page]);
+
+    useEffect(() => {
+        const url = turnedUrl();
+        if (!url) {
+            setShownUrl(null);
+            return;
+        }
+        let cancelled = false;
+        url.then((u) => !cancelled && setShownUrl(u)).catch((e: Error) => !cancelled && setNotice(`The photo could not be turned: ${e.message}`));
+        return () => {
+            cancelled = true;
+        };
+    }, [turnedUrl, rotation]);
+
+    // Turned copies are local blobs: free them once another photo or turn is shown.
+    useEffect(() => {
+        if (!shownUrl?.startsWith('blob:')) return;
+        return () => URL.revokeObjectURL(shownUrl);
+    }, [shownUrl]);
+
     // Every change goes to the draft, shortly after it is made.
     useEffect(() => {
         if (!page || !dirty) return;
         const timer = window.setTimeout(
-            () => writeDraft(page.id, { base: page.labeled_at ?? null, savedAt: Date.now(), cells, rejected: [...rejected], tags }),
+            () => writeDraft(page.id, { base: page.labeled_at ?? null, savedAt: Date.now(), cells, rejected: [...rejected], tags, rotation }),
             300,
         );
         return () => window.clearTimeout(timer);
-    }, [page, cells, rejected, tags, dirty]);
+    }, [page, cells, rejected, tags, rotation, dirty]);
 
     const discardDraft = () => {
         if (!page) return;
         clearDraft(page.id);
-        undo.current.push(cellsRef.current);
+        undo.current = [];
+        redo.current = [];
+        setRotation(initialRotation.current);
         setCells(initialCells.current);
+        setSelectedId(null);
         setRejected(new Set());
         setTags(page.tags ?? []);
         setDirty(false);
@@ -278,17 +341,28 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         if (pageId) window.history.replaceState(null, '', `${routes.labeling}?page=${pageId}`);
     }, [pageId, routes.labeling]);
 
-    const suggestions = useMemo(() => {
+    /** The turned photo's size: the cells' coordinate space. */
+    const frame = page ? turnedSize(page.width, page.height, rotation) : { w: 1000, h: 1000 };
+
+    /** The server's cells, turned with the photo. */
+    const pageSuggestions = useMemo<Suggestion[]>(() => {
         if (!page) return [];
-        const candidates = page.suggestions.map((cell, index) => ({ cell, index })).filter(({ cell, index }) => cell[5] >= SUGGEST_MIN && !rejected.has(index));
+        return page.suggestions.map((s) => {
+            const b = turnBox(boxOf(s), 0, rotation, page.width, page.height);
+            return [b.x1, b.y1, b.x2, b.y2, s[4], s[5]];
+        });
+    }, [page, rotation]);
+
+    const suggestions = useMemo(() => {
+        const candidates = pageSuggestions.map((cell, index) => ({ cell, index })).filter(({ cell, index }) => cell[5] >= SUGGEST_MIN && !rejected.has(index));
         const covered = new Set(match(candidates.map(({ cell }) => boxOf(cell)), cells, 0.2).map(([i]) => i));
         return candidates.filter((_, i) => !covered.has(i));
-    }, [page, cells, rejected]);
+    }, [pageSuggestions, cells, rejected]);
 
     const ordered = useMemo(() => readingOrder(cells), [cells]);
     const selected = cells.find((c) => c.id === selectedId) ?? null;
     const group = useMemo(() => cells.filter((c) => selectedIds.has(c.id)), [cells, selectedIds]);
-    const size = useMemo(() => typicalSize(cells.length ? cells : (page?.suggestions ?? []).map(boxOf), page?.width ?? 1000), [cells, page]);
+    const size = useMemo(() => typicalSize(cells.length ? cells : pageSuggestions.map(boxOf), frame.w), [cells, pageSuggestions, frame.w]);
 
     // ---- editing ----
     const snapshot = useCallback(() => {
@@ -335,11 +409,18 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         setSelection((sel) => [...sel, ...inside.map((c) => c.id).filter((id) => !sel.includes(id))]);
     }, []);
 
+    /** The turned photo in grey for the dot model, made once per page and turn. */
     const loadGray = useCallback(() => {
-        if (!page?.photo_url) return null;
-        if (gray.current?.id !== page.id) gray.current = { id: page.id, photo: grayPhoto(page.photo_url, page.width, page.height) };
+        const url = turnedUrl();
+        if (!page || !url) return null;
+        const r = rotationRef.current;
+        const key = `${page.id}:${r}`;
+        if (gray.current?.key !== key) {
+            const { w, h } = turnedSize(page.width, page.height, r);
+            gray.current = { key, photo: url.then((u) => grayPhoto(u, w, h)) };
+        }
         return gray.current.photo;
-    }, [page]);
+    }, [page, turnedUrl]);
 
     /** Reads the dots of these cells with the model, unless they were set by hand meanwhile. */
     const readDots = useCallback(
@@ -361,6 +442,31 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         },
         [classifierUrl, loadGray],
     );
+
+    /**
+     * Turns the photo a quarter clockwise, with every cell on it. The phone's
+     * dots were read the other way up, so the model reads them again (dots
+     * set by hand stay). Undo does not cross a turn: turn back instead.
+     */
+    const rotate = useCallback(() => {
+        if (!page) return;
+        const from = rotationRef.current;
+        const to = (from + 90) % 360;
+        const turnedCells = cellsRef.current.map((c) => {
+            const { serverPattern: _, ...rest } = turnBox(c, from, to, page.width, page.height);
+            return rest;
+        });
+        undo.current = [];
+        redo.current = [];
+        lastBox.current = null;
+        rotationRef.current = to;
+        setRotation(to);
+        setCells(turnedCells);
+        setSelectedId(null);
+        setDirty(true);
+        touch();
+        void readDots(turnedCells.filter((c) => !c.dotsByHand));
+    }, [page, readDots, setSelectedId, touch]);
 
     const addCell = useCallback(
         (box: Box, from?: Partial<LabelCell>, read = true) => {
@@ -404,12 +510,12 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     /** Hides the server's cells under these, so deleting a wrong cell does not leave its red twin behind. */
     const rejectUnder = useCallback(
         (removed: Box[]) => {
-            if (!page || removed.length === 0) return;
-            const open = page.suggestions.map((cell, index) => ({ cell, index })).filter(({ index }) => !rejected.has(index));
+            if (removed.length === 0) return;
+            const open = pageSuggestions.map((cell, index) => ({ cell, index })).filter(({ index }) => !rejected.has(index));
             const under = match(open.map(({ cell }) => boxOf(cell)), removed, 0.2).map(([i]) => open[i].index);
             if (under.length) setRejected(new Set([...rejected, ...under]));
         },
-        [page, rejected],
+        [pageSuggestions, rejected],
     );
 
     /** Deletes every cell of one colour at once, as one undo step. */
@@ -441,10 +547,10 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
 
     const accept = useCallback(
         (index: number) => {
-            const s = page?.suggestions[index];
+            const s = pageSuggestions[index];
             if (s) addCell(boxOf(s), { pattern: s[4], origin: 'server' });
         },
-        [page, addCell],
+        [pageSuggestions, addCell],
     );
 
     const acceptAll = useCallback(() => {
@@ -549,10 +655,12 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         touch();
         setSaving(true);
         try {
+            const initial = initialCells.current.map((c) => turnBox(c, initialRotation.current, rotation, page.width, page.height));
             const result = await send<{ next_id: number | null; stats: Stats }>(pageUrl(page.id), 'PUT', {
                 cells: cells.map((c) => [c.x1, c.y1, c.x2, c.y2, c.pattern]),
-                edits: editStats(initialCells.current, cells),
+                edits: editStats(initial, cells),
                 tags,
+                rotation,
                 seconds: Math.round(active.current.seconds),
             });
             clearDraft(page.id);
@@ -567,7 +675,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             setSaving(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, cells, ordered, saving, touch, tags]);
+    }, [page, cells, ordered, saving, touch, tags, rotation]);
 
     const skip = async (reason: string) => {
         if (!page) return;
@@ -590,6 +698,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         try {
             const result = await send<{ data: { text: string; braille: string } }>(`${pageUrl(page.id)}/read`, 'POST', {
                 lang,
+                rotation,
                 cells: cells.filter((c) => c.pattern > 0).map((c) => [c.x1, c.y1, c.x2, c.y2, c.pattern]),
             });
             setReading(result.data);
@@ -599,7 +708,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             setReadingBusy(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, cells, lang]);
+    }, [page, cells, lang, rotation]);
 
     // ---- keyboard ----
     useEffect(() => {
@@ -644,6 +753,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 }
             } else if (key === 'b') {
                 addNext();
+            } else if (key === 'r') {
+                rotate();
             } else if (key === 'n') {
                 const p = editor.current?.pointer();
                 if (p) void addAt(p.x, p.y);
@@ -682,7 +793,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [selected, group, rejectUnder, toggleDot, step, remove, snapshot, update, updateGroup, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext, setSelectedId]);
+    }, [selected, group, rejectUnder, toggleDot, step, remove, snapshot, update, updateGroup, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext, rotate, setSelectedId]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -745,6 +856,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                             Test page
                         </Badge>
                     )}
+                    {rotation !== 0 && <Badge variant="outline">Turned {rotation}°</Badge>}
                     {page.status !== 'todo' && (
                         <Badge variant="outline">
                             {page.status === 'done' ? `Labeled${page.labeled_by ? ` by ${page.labeled_by}` : ''}` : `Skipped: ${SKIP_LABELS[page.skip_reason ?? ''] ?? page.skip_reason}`}
@@ -771,9 +883,9 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                         {page && (
                             <Editor
                                 ref={editor}
-                                photoUrl={page.photo_url}
-                                width={page.width}
-                                height={page.height}
+                                photoUrl={shownUrl}
+                                width={frame.w}
+                                height={frame.h}
                                 cells={cells}
                                 suggestions={suggestions}
                                 selectedId={selectedId}
@@ -812,6 +924,9 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                             </Button>
                             <Button variant="ghost" size="icon-sm" title="Redo (⇧⌘Z)" onClick={redoLast}>
                                 <Redo2 />
+                            </Button>
+                            <Button variant="ghost" size="icon-sm" title="Turn the photo clockwise (R)" onClick={rotate} disabled={!page}>
+                                <RotateCw />
                             </Button>
                             <Button variant="ghost" size="icon-sm" title="Fit (F)" onClick={() => editor.current?.fit()}>
                                 <Maximize />
@@ -967,7 +1082,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                         </>
                                     ) : selected ? (
                                         <>
-                                            <Loupe photoUrl={page.photo_url} box={selected} width={page.width} height={page.height} pattern={selected.pattern} />
+                                            <Loupe photoUrl={shownUrl} box={selected} width={frame.w} height={frame.h} pattern={selected.pattern} />
                                             <DotPad pattern={selected.pattern} serverPattern={selected.serverPattern} onToggle={(d) => toggleDot(selected.id, d)} />
                                             <div className="flex flex-col gap-1 text-xs text-muted-foreground">
                                                 <span>

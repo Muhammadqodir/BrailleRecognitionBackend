@@ -46,6 +46,41 @@ export function boxOf(c: number[]): Box {
     return { x1: c[0], y1: c[1], x2: c[2], y2: c[3] };
 }
 
+/** The size of the photo turned clockwise by [rotation] (0, 90, 180 or 270). */
+export function turnedSize(width: number, height: number, rotation: number): { w: number; h: number } {
+    return rotation % 180 === 0 ? { w: width, h: height } : { w: height, h: width };
+}
+
+/** A box in a picture [height] tall, turned a quarter clockwise. */
+function quarter(b: Box, height: number): Box {
+    return { x1: height - b.y2, y1: b.x1, x2: height - b.y1, y2: b.x2 };
+}
+
+/** A box in the photo turned by [from] moved into the photo turned by [to]; width and height are the unturned photo's. */
+export function turnBox<T extends Box>(b: T, from: number, to: number, width: number, height: number): T {
+    let box: Box = b;
+    let r = from;
+    while (r !== to) {
+        box = quarter(box, turnedSize(width, height, r).h);
+        r = (r + 90) % 360;
+    }
+    return { ...b, ...box };
+}
+
+/** The transform that draws the unturned photo at (0, 0, width, height) turned clockwise by [rotation]: canvas setTransform / CSS matrix order. */
+export function turnMatrix(rotation: number, width: number, height: number): [number, number, number, number, number, number] {
+    switch (rotation) {
+        case 90:
+            return [0, 1, -1, 0, height, 0];
+        case 180:
+            return [-1, 0, 0, -1, width, height];
+        case 270:
+            return [0, -1, 1, 0, 0, width];
+        default:
+            return [1, 0, 0, 1, 0, 0];
+    }
+}
+
 /** Greedy one-to-one matching by IoU, best pairs first: pairs of indexes into a and b. */
 export function match(a: Box[], b: Box[], minIou = MATCH_IOU): [number, number][] {
     const candidates: [number, number, number][] = [];
