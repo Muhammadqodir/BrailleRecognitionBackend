@@ -68,9 +68,11 @@ interface ColumnsOptions {
     tagNames: string[];
     busy: Set<string>;
     onToggleTag: (row: DatasetRow, tag: string) => void;
+    /** The photo was clicked: show it with its cells. */
+    onPreview: (row: DatasetRow) => void;
 }
 
-export function getDatasetColumns({ sort, direction, onSort, tagNames, busy, onToggleTag }: ColumnsOptions): ColumnDef<DatasetRow>[] {
+export function getDatasetColumns({ sort, direction, onSort, tagNames, busy, onToggleTag, onPreview }: ColumnsOptions): ColumnDef<DatasetRow>[] {
     return [
         {
             id: 'select',
@@ -96,7 +98,17 @@ export function getDatasetColumns({ sort, direction, onSort, tagNames, busy, onT
             size: 170,
             cell: ({ row }) => (
                 <div className="flex min-w-0 items-center gap-3">
-                    <ScanThumb url={row.original.image_url} className="size-9" />
+                    <button
+                        type="button"
+                        title="Show the photo with its cells"
+                        className="shrink-0 cursor-zoom-in rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onPreview(row.original);
+                        }}
+                    >
+                        <ScanThumb url={row.original.image_url} className="size-9" />
+                    </button>
                     <div className="min-w-0">
                         <div className="font-medium tabular-nums">#{row.original.id}</div>
                         <div className="truncate font-mono text-xs text-muted-foreground">scan {row.original.translation_id}</div>

@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { ChevronDown, Tag } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { DataTable } from '@/components/data-table/data-table';
 import type { SortDirection } from '@/components/data-table/data-table-column-header';
@@ -9,6 +9,7 @@ import { FilterBar } from '@/components/data-table/filter-bar';
 import { TableSearch } from '@/components/data-table/table-search';
 import { useDataTable } from '@/components/data-table/use-data-table';
 import { getDatasetColumns, STATUS_LABELS, TAG_LABELS, type DatasetRow } from '@/components/dataset/columns';
+import { PagePreviewDialog } from '@/components/dataset/page-preview-dialog';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
@@ -39,6 +40,8 @@ export default function Dataset({ pages, splitCounts, statusCounts, tagCounts, t
     const [rows, setRows] = useState(pages.data);
     const [busy, setBusy] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
+    const [preview, setPreview] = useState<DatasetRow | null>(null);
+    const pageUrl = useCallback((id: number) => `${routes.labeling}/${id}`, [routes.labeling]);
 
     useEffect(() => setRows(pages.data), [pages.data]);
 
@@ -73,6 +76,7 @@ export default function Dataset({ pages, splitCounts, statusCounts, tagCounts, t
                 tagNames,
                 busy,
                 onToggleTag: (row, tag) => void setTag([row.id], tag, !row.tags.includes(tag)),
+                onPreview: setPreview,
             }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [filters, tagNames, busy, rows],
@@ -175,6 +179,7 @@ export default function Dataset({ pages, splitCounts, statusCounts, tagCounts, t
                 emptyMessage="No pages match these filters."
                 onRowClick={(row) => router.visit(`${routes.labeling}?page=${row.id}`)}
             />
+            <PagePreviewDialog row={preview} pageUrl={pageUrl} onClose={() => setPreview(null)} onEdit={(row) => router.visit(`${routes.labeling}?page=${row.id}`)} />
         </DashboardLayout>
     );
 }
