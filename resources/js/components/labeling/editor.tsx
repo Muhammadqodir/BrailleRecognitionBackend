@@ -26,14 +26,20 @@ interface EditorProps {
     cells: LabelCell[];
     /** Server cells no current cell covers, with their index in the page's suggestion list. */
     suggestions: { index: number; cell: Suggestion }[];
+    /** The cell the panel shows: the last one selected. */
     selectedId: number | null;
+    /** Every selected cell, including selectedId. */
+    selectedIds: Set<number>;
     showBoxes: boolean;
     showDots: boolean;
-    onSelect: (id: number | null) => void;
+    /** Additive (Shift) selection toggles the cell in or out of the selection. */
+    onSelect: (id: number | null, additive?: boolean) => void;
+    /** Shift + drag over empty photo: adds the cells inside the box to the selection. */
+    onSelectBox: (box: Box) => void;
     /** A drag is about to change cells: snapshot for undo. */
     onBeginEdit: () => void;
-    onMove: (id: number, box: Box) => void;
-    onEndMove: (id: number) => void;
+    onMove: (boxes: { id: number; box: Box }[]) => void;
+    onEndMove: (ids: number[]) => void;
     onToggleDot: (id: number, dot: number) => void;
     onCreate: (box: Box) => void;
     onCreateAt: (x: number, y: number) => void;
@@ -42,9 +48,9 @@ interface EditorProps {
 
 type Drag =
     | { kind: 'pan'; sx: number; sy: number; tx: number; ty: number }
-    | { kind: 'move'; id: number; px: number; py: number; box: Box; started: boolean }
-    | { kind: 'resize'; id: number; corner: number; box: Box; started: boolean }
-    | { kind: 'draw'; px: number; py: number; x: number; y: number };
+    | { kind: 'move'; px: number; py: number; boxes: { id: number; box: Box }[]; started: boolean }
+    | { kind: 'resize'; corner: number; px: number; py: number; boxes: { id: number; box: Box }[]; started: boolean }
+    | { kind: 'draw'; px: number; py: number; x: number; y: number; marquee: boolean };
 
 const HANDLE = 7; // screen px
 
@@ -54,13 +60,15 @@ const HANDLE = 7; // screen px
  * pointer only needs one transform back to photo coordinates.
  */
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(props, ref) {
-    const { photoUrl, width, height, cells, suggestions, selectedId, showBoxes, showDots } = props;
+    const { photoUrl, width, height, cells, suggestions, selectedId, selectedIds, showBoxes, showDots } = props;
     const wrap = useRef<HTMLDivElement>(null);
     const [view, setView] = useState({ scale: 1, tx: 0, ty: 0 });
     const viewRef = useRef(view);
     viewRef.current = view;
     const drag = useRef<Drag | null>(null);
     const [drawBox, setDrawBox] = useState<Box | null>(null);
+    /** The box being dragged out selects cells rather than drawing one. */
+    const [marquee, setMarquee] = useState(false);
     const mouse = useRef<{ x: number; y: number } | null>(null);
     const space = useRef(false);
     const [panning, setPanning] = useState(false);
@@ -168,9 +176,12 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
     };
 
     const hitCell = (x: number, y: number): LabelCell | null => {
-        // The selected cell first, then the smallest box under the pointer.
+        // A selected cell first, then the smallest box under the pointer.
+        const inside = (c: LabelCell) => x >= c.x1 && x <= c.x2 && y >= c.y1 && y <= c.y2;
         const sel = cells.find((c) => c.id === selectedId);
-        if (sel && x >= sel.x1 && x <= sel.x2 && y >= sel.y1 && y <= sel.y2) return sel;
+        if (sel && inside(sel)) return sel;
+        const other = cells.find((c) => selectedIds.has(c.id) && inside(c));
+        if (other) return other;
         let best: LabelCell | null = null;
         for (const c of cells) {
             if (x >= c.x1 && x <= c.x2 && y >= c.y1 && y <= c.y2 && (!best || (c.x2 - c.x1) * (c.y2 - c.y1) < (best.x2 - best.x1) * (best.y2 - best.y1))) best = c;
@@ -191,20 +202,27 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
         const { x, y } = toPhoto(e);
         const tol = HANDLE / v.scale;
         const sel = cells.find((c) => c.id === selectedId);
+        const group = cells.filter((c) => selectedIds.has(c.id));
+        const boxesOf = (cs: LabelCell[]) => cs.map((c) => ({ id: c.id, box: { x1: c.x1, y1: c.y1, x2: c.x2, y2: c.y2 } }));
 
-        if (sel && showBoxes) {
-            // A corner handle of the selected cell resizes it.
-            const corners = [
-                [sel.x1, sel.y1],
-                [sel.x2, sel.y1],
-                [sel.x2, sel.y2],
-                [sel.x1, sel.y2],
-            ];
-            const corner = corners.findIndex(([cx, cy]) => Math.abs(cx - x) <= tol && Math.abs(cy - y) <= tol);
-            if (corner >= 0) {
-                drag.current = { kind: 'resize', id: sel.id, corner, box: { ...sel }, started: false };
-                return;
+        if (showBoxes && !e.shiftKey) {
+            // A corner handle of any selected cell resizes them all by the same amount.
+            for (const c of sel ? [sel, ...group] : group) {
+                const corners = [
+                    [c.x1, c.y1],
+                    [c.x2, c.y1],
+                    [c.x2, c.y2],
+                    [c.x1, c.y2],
+                ];
+                const corner = corners.findIndex(([cx, cy]) => Math.abs(cx - x) <= tol && Math.abs(cy - y) <= tol);
+                if (corner >= 0) {
+                    drag.current = { kind: 'resize', corner, px: corners[corner][0], py: corners[corner][1], boxes: boxesOf(group), started: false };
+                    return;
+                }
             }
+        }
+
+        if (sel && showBoxes && group.length === 1 && !e.shiftKey) {
             // A dot of the selected cell toggles it.
             if (showDots && x >= sel.x1 && x <= sel.x2 && y >= sel.y1 && y <= sel.y2) {
                 const r = Math.max(Math.min(sel.x2 - sel.x1, sel.y2 - sel.y1) * 0.16, tol * 0.8);
@@ -222,13 +240,22 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
 
         const cell = showBoxes ? hitCell(x, y) : null;
         if (cell) {
-            p.onSelect(cell.id);
-            drag.current = { kind: 'move', id: cell.id, px: x, py: y, box: { ...cell }, started: false };
+            if (e.shiftKey) {
+                // Shift toggles the cell; one just added can be dragged with the rest at once.
+                const adding = !selectedIds.has(cell.id);
+                p.onSelect(cell.id, true);
+                if (adding) drag.current = { kind: 'move', px: x, py: y, boxes: boxesOf([...group, cell]), started: false };
+                return;
+            }
+            // Dragging a selected cell drags the whole selection.
+            const moving = selectedIds.has(cell.id) ? group : [cell];
+            if (!selectedIds.has(cell.id)) p.onSelect(cell.id);
+            drag.current = { kind: 'move', px: x, py: y, boxes: boxesOf(moving), started: false };
             return;
         }
 
         // A dashed suggestion: take it.
-        if (showBoxes) {
+        if (showBoxes && !e.shiftKey) {
             const s = suggestions.find(({ cell: c }) => x >= c[0] && x <= c[2] && y >= c[1] && y <= c[3]);
             if (s) {
                 p.onAccept(s.index);
@@ -236,7 +263,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
             }
         }
 
-        drag.current = { kind: 'draw', px: e.clientX, py: e.clientY, x, y };
+        drag.current = { kind: 'draw', px: e.clientX, py: e.clientY, x, y, marquee: e.shiftKey };
     };
 
     const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -255,20 +282,28 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
                 d.started = true;
                 p.onBeginEdit();
             }
-            p.onMove(d.id, { x1: d.box.x1 + dx, y1: d.box.y1 + dy, x2: d.box.x2 + dx, y2: d.box.y2 + dy });
+            p.onMove(d.boxes.map(({ id, box: b }) => ({ id, box: { x1: b.x1 + dx, y1: b.y1 + dy, x2: b.x2 + dx, y2: b.y2 + dy } })));
         } else if (d.kind === 'resize') {
             if (!d.started) {
                 d.started = true;
                 p.onBeginEdit();
             }
-            const b = { ...d.box };
-            if (d.corner === 0 || d.corner === 3) b.x1 = Math.min(pt.x, b.x2 - 2);
-            else b.x2 = Math.max(pt.x, b.x1 + 2);
-            if (d.corner === 0 || d.corner === 1) b.y1 = Math.min(pt.y, b.y2 - 2);
-            else b.y2 = Math.max(pt.y, b.y1 + 2);
-            p.onMove(d.id, b);
+            // The same corner of every selected cell moves by the pointer's offset.
+            const dx = pt.x - d.px;
+            const dy = pt.y - d.py;
+            p.onMove(
+                d.boxes.map(({ id, box }) => {
+                    const b = { ...box };
+                    if (d.corner === 0 || d.corner === 3) b.x1 = Math.min(box.x1 + dx, b.x2 - 2);
+                    else b.x2 = Math.max(box.x2 + dx, b.x1 + 2);
+                    if (d.corner === 0 || d.corner === 1) b.y1 = Math.min(box.y1 + dy, b.y2 - 2);
+                    else b.y2 = Math.max(box.y2 + dy, b.y1 + 2);
+                    return { id, box: b };
+                }),
+            );
         } else if (d.kind === 'draw') {
             if (Math.hypot(e.clientX - d.px, e.clientY - d.py) < 5) return;
+            setMarquee(d.marquee);
             setDrawBox({ x1: Math.min(d.x, pt.x), y1: Math.min(d.y, pt.y), x2: Math.max(d.x, pt.x), y2: Math.max(d.y, pt.y) });
         }
     };
@@ -279,15 +314,18 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
         const p = latest.current;
         if (!space.current) setPanning(false);
         if (!d) return;
-        if ((d.kind === 'move' || d.kind === 'resize') && d.started) p.onEndMove(d.id);
+        if ((d.kind === 'move' || d.kind === 'resize') && d.started) p.onEndMove(d.boxes.map((b) => b.id));
         if (d.kind === 'draw') {
-            if (drawBox && drawBox.x2 - drawBox.x1 > 3 && drawBox.y2 - drawBox.y1 > 3) p.onCreate(drawBox);
+            if (d.marquee) {
+                if (drawBox) p.onSelectBox(drawBox);
+            } else if (drawBox && drawBox.x2 - drawBox.x1 > 3 && drawBox.y2 - drawBox.y1 > 3) p.onCreate(drawBox);
             else p.onSelect(null);
             setDrawBox(null);
         }
     };
 
     const onDoubleClick = (e: React.MouseEvent) => {
+        if (e.shiftKey) return;
         const { x, y } = toPhoto(e);
         if (!hitCell(x, y)) latest.current.onCreateAt(x, y);
     };
@@ -331,7 +369,8 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
                             />
                         ))}
                         {cells.map((c) => {
-                            const selected = c.id === selectedId;
+                            const selected = selectedIds.has(c.id);
+                            const primary = c.id === selectedId;
                             const color = selected ? COLORS.selected : isChecked(c) ? COLORS.human : isUnsure(c) ? COLORS.unsure : COLORS.model;
                             const w = c.x2 - c.x1;
                             const h = c.y2 - c.y1;
@@ -357,9 +396,9 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
                                                     key={d}
                                                     cx={c.x1 + w * fx}
                                                     cy={c.y1 + h * fy}
-                                                    r={r * (selected ? 0.12 : 0.07)}
+                                                    r={r * (primary ? 0.12 : 0.07)}
                                                     fill={raised ? color : 'none'}
-                                                    fillOpacity={selected ? 0.75 : 0.9}
+                                                    fillOpacity={primary ? 0.75 : 0.9}
                                                     stroke={color}
                                                     strokeOpacity={raised ? 0 : 0.7}
                                                     strokeWidth={stroke * 0.6}
@@ -385,10 +424,11 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(prop
                                 y={drawBox.y1}
                                 width={drawBox.x2 - drawBox.x1}
                                 height={drawBox.y2 - drawBox.y1}
-                                fill={COLORS.human}
-                                fillOpacity={0.1}
-                                stroke={COLORS.human}
+                                fill={marquee ? COLORS.selected : COLORS.human}
+                                fillOpacity={marquee ? 0.06 : 0.1}
+                                stroke={marquee ? COLORS.selected : COLORS.human}
                                 strokeWidth={stroke}
+                                strokeDasharray={marquee ? `${4 / s} ${3 / s}` : undefined}
                             />
                         )}
                     </svg>

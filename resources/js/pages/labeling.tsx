@@ -80,6 +80,8 @@ const TAG_LABELS: Record<string, { label: string; hint: string; key: string }> =
 
 const SHORTCUTS: [string, string][] = [
     ['Click a box', 'Select it; drag to move, corners to resize'],
+    ['Shift + click / Shift + drag', 'Select several cells; drag one to move all, a corner to resize all'],
+    ['⌘A', 'Select every cell'],
     ['Drag on the photo', 'Draw a new cell'],
     ['Double-click / N', 'Add a cell of the usual size, centred on its dots'],
     ['B', 'Add a cell the size of the last one, next to the selected cell; drag it into place'],
@@ -90,8 +92,8 @@ const SHORTCUTS: [string, string][] = [
     ['U', 'Use the server’s dots for the selected cell'],
     ['C', 'Re-read the selected cell’s dots with the model'],
     ['A', 'Take all server suggestions'],
-    ['Delete', 'Delete the selected cell'],
-    ['Arrows', 'Nudge (Shift: 5 px)'],
+    ['Delete', 'Delete the selected cells, and the red boxes under them'],
+    ['Arrows', 'Nudge (Shift: 5 px); Alt + arrows: resize'],
     ['H / D', 'Hide boxes / dots'],
     ['Space + drag, scroll', 'Pan'],
     ['Pinch, ⌘ + scroll, + / −', 'Zoom; F fits'],
@@ -155,7 +157,11 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     const [stats, setStats] = useState(initialStats);
     const [cells, setCells] = useState<LabelCell[]>([]);
     const initialCells = useRef<LabelCell[]>([]);
-    const [selectedId, setSelectedId] = useState<number | null>(null);
+    /** Selected cell ids, the last one selected last: it is the one the panel shows. */
+    const [selection, setSelection] = useState<number[]>([]);
+    const selectedId = selection.length ? selection[selection.length - 1] : null;
+    const selectedIds = useMemo(() => new Set(selection), [selection]);
+    const setSelectedId = useCallback((id: number | null) => setSelection(id === null ? [] : [id]), []);
     const [rejected, setRejected] = useState<Set<number>>(new Set());
     const [tags, setTags] = useState<string[]>([]);
     const [showBoxes, setShowBoxes] = useState(true);
@@ -281,6 +287,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
 
     const ordered = useMemo(() => readingOrder(cells), [cells]);
     const selected = cells.find((c) => c.id === selectedId) ?? null;
+    const group = useMemo(() => cells.filter((c) => selectedIds.has(c.id)), [cells, selectedIds]);
     const size = useMemo(() => typicalSize(cells.length ? cells : (page?.suggestions ?? []).map(boxOf), page?.width ?? 1000), [cells, page]);
 
     // ---- editing ----
@@ -303,6 +310,29 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
 
     const update = useCallback((id: number, change: Partial<LabelCell>) => {
         setCells((cs) => cs.map((c) => (c.id === id ? { ...c, ...change } : c)));
+    }, []);
+
+    /** Changes every selected cell, each by its own box. */
+    const updateGroup = useCallback(
+        (change: (c: LabelCell) => Partial<LabelCell>) => setCells((cs) => cs.map((c) => (selectedIds.has(c.id) ? { ...c, ...change(c) } : c))),
+        [selectedIds],
+    );
+
+    /** Shift + click: adds the cell to the selection, or takes it out. */
+    const selectCell = useCallback((id: number | null, additive = false) => {
+        if (id === null) setSelection([]);
+        else if (!additive) setSelection([id]);
+        else setSelection((sel) => (sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]));
+    }, []);
+
+    /** Shift + drag: adds the cells whose centres are inside the box. */
+    const selectBox = useCallback((box: Box) => {
+        const inside = cellsRef.current.filter((c) => {
+            const cx = (c.x1 + c.x2) / 2;
+            const cy = (c.y1 + c.y2) / 2;
+            return cx >= box.x1 && cx <= box.x2 && cy >= box.y1 && cy <= box.y2;
+        });
+        setSelection((sel) => [...sel, ...inside.map((c) => c.id).filter((id) => !sel.includes(id))]);
     }, []);
 
     const loadGray = useCallback(() => {
@@ -371,14 +401,26 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         editor.current?.reveal(box);
     }, [selectedId, size, addCell]);
 
+    /** Hides the server's cells under these, so deleting a wrong cell does not leave its red twin behind. */
+    const rejectUnder = useCallback(
+        (removed: Box[]) => {
+            if (!page || removed.length === 0) return;
+            const open = page.suggestions.map((cell, index) => ({ cell, index })).filter(({ index }) => !rejected.has(index));
+            const under = match(open.map(({ cell }) => boxOf(cell)), removed, 0.2).map(([i]) => open[i].index);
+            if (under.length) setRejected(new Set([...rejected, ...under]));
+        },
+        [page, rejected],
+    );
+
     /** Deletes every cell of one colour at once, as one undo step. */
     const removeWhere = useCallback(
         (keep: (c: LabelCell) => boolean) => {
             snapshot();
+            rejectUnder(cellsRef.current.filter((c) => !keep(c)));
             setCells((cs) => cs.filter(keep));
             setSelectedId(null);
         },
-        [snapshot],
+        [snapshot, rejectUnder, setSelectedId],
     );
 
     /** A cell of the page's usual size at a point, centred on its dots by the model when it is available. */
@@ -421,14 +463,19 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         [snapshot, update],
     );
 
+    /** Deletes these cells (and the red suggestions under them), then selects the next one in reading order. */
     const remove = useCallback(
-        (id: number) => {
-            const i = ordered.findIndex((c) => c.id === id);
+        (ids: number[]) => {
+            const gone = new Set(ids);
+            const left = ordered.filter((c) => !gone.has(c.id));
+            const last = Math.max(...ordered.map((c, i) => (gone.has(c.id) ? i : -1)));
+            const next = ordered.slice(last + 1).find((c) => !gone.has(c.id)) ?? left[left.length - 1];
             snapshot();
-            setCells((cs) => cs.filter((c) => c.id !== id));
-            setSelectedId(ordered[i + 1]?.id ?? ordered[i - 1]?.id ?? null);
+            rejectUnder(ordered.filter((c) => gone.has(c.id)));
+            setCells((cs) => cs.filter((c) => !gone.has(c.id)));
+            setSelectedId(ids.length === 1 ? (next?.id ?? null) : null);
         },
-        [ordered, snapshot],
+        [ordered, snapshot, rejectUnder, setSelectedId],
     );
 
     const step = useCallback(
@@ -463,15 +510,16 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
 
     /** The phone got this cell right: mark it checked and move on to the next one it was unsure of. */
     const confirm = useCallback(
-        (id: number) => {
+        (ids: number[]) => {
             snapshot();
-            const list = ordered.map((c) => (c.id === id ? { ...c, checked: true } : c));
-            update(id, { checked: true });
-            const next = nextUnsure(id, list);
+            const set = new Set(ids);
+            const list = ordered.map((c) => (set.has(c.id) ? { ...c, checked: true } : c));
+            setCells((cs) => cs.map((c) => (set.has(c.id) ? { ...c, checked: true } : c)));
+            const next = nextUnsure(ids[ids.length - 1], list);
             if (next) goTo(next);
             else setSelectedId(null);
         },
-        [ordered, snapshot, update, nextUnsure, goTo],
+        [ordered, snapshot, nextUnsure, goTo, setSelectedId],
     );
 
     const undoLast = useCallback(() => {
@@ -567,22 +615,32 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 else undoLast();
                 return;
             }
+            if (mod && key === 'a') {
+                e.preventDefault();
+                setSelection(cellsRef.current.map((c) => c.id));
+                return;
+            }
             if (mod) return;
-            if (selected && /^[1-6]$/.test(e.key)) {
+            if (selected && group.length === 1 && /^[1-6]$/.test(e.key)) {
                 toggleDot(selected.id, Number(e.key) - 1);
             } else if (e.key === 'Tab') {
                 e.preventDefault();
                 step(e.shiftKey ? -1 : 1);
-            } else if (selected && (e.key === 'Delete' || e.key === 'Backspace')) {
+            } else if (group.length && (e.key === 'Delete' || e.key === 'Backspace')) {
                 e.preventDefault();
-                remove(selected.id);
-            } else if (selected && e.key.startsWith('Arrow')) {
+                remove(group.map((c) => c.id));
+            } else if (group.length && e.key.startsWith('Arrow')) {
                 e.preventDefault();
                 const d = e.shiftKey ? 5 : 1;
                 const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0;
                 const dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0;
                 snapshot();
-                update(selected.id, { x1: selected.x1 + dx, x2: selected.x2 + dx, y1: selected.y1 + dy, y2: selected.y2 + dy, moved: true });
+                if (e.altKey) {
+                    // Alt + arrows: wider / narrower, taller / shorter, keeping the top-left corner.
+                    updateGroup((c) => ({ x2: Math.max(c.x2 + dx, c.x1 + 2), y2: Math.max(c.y2 + dy, c.y1 + 2), moved: true }));
+                } else {
+                    updateGroup((c) => ({ x1: c.x1 + dx, x2: c.x2 + dx, y1: c.y1 + dy, y2: c.y2 + dy, moved: true }));
+                }
             } else if (key === 'b') {
                 addNext();
             } else if (key === 'n') {
@@ -590,14 +648,14 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 if (p) void addAt(p.x, p.y);
             } else if (key === 'a') {
                 acceptAll();
-            } else if (key === 'v' && selected) {
-                confirm(selected.id);
+            } else if (key === 'v' && group.length) {
+                confirm(group.map((c) => c.id));
             } else if (key === 'u' && selected?.serverPattern !== undefined) {
                 snapshot();
                 update(selected.id, { pattern: selected.serverPattern, dotsByHand: true });
-            } else if (key === 'c' && selected) {
+            } else if (key === 'c' && group.length) {
                 snapshot();
-                void readDots([selected], true);
+                void readDots(group, true);
             } else if (key === 't' && tagNames.includes('two_sided')) {
                 toggleTag('two_sided');
             } else if (key === 'l' && tagNames.includes('side_light')) {
@@ -623,7 +681,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [selected, toggleDot, step, remove, snapshot, update, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext]);
+    }, [selected, group, toggleDot, step, remove, snapshot, update, updateGroup, addAt, acceptAll, readDots, save, undoLast, redoLast, touch, toggleTag, tagNames, confirm, addNext, setSelectedId]);
 
     useEffect(() => {
         const warn = (e: BeforeUnloadEvent) => {
@@ -718,14 +776,20 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                 cells={cells}
                                 suggestions={suggestions}
                                 selectedId={selectedId}
+                                selectedIds={selectedIds}
                                 showBoxes={showBoxes}
                                 showDots={showDots}
-                                onSelect={setSelectedId}
+                                onSelect={selectCell}
+                                onSelectBox={selectBox}
                                 onBeginEdit={snapshot}
-                                onMove={(id, box) => update(id, { ...box, moved: true })}
-                                onEndMove={(id) => {
-                                    const moved = cellsRef.current.filter((c) => c.id === id);
-                                    if (moved[0]) lastBox.current = { x1: moved[0].x1, y1: moved[0].y1, x2: moved[0].x2, y2: moved[0].y2 };
+                                onMove={(boxes) => {
+                                    const byId = new Map(boxes.map((b) => [b.id, b.box]));
+                                    setCells((cs) => cs.map((c) => (byId.has(c.id) ? { ...c, ...byId.get(c.id), moved: true } : c)));
+                                }}
+                                onEndMove={(ids) => {
+                                    const moved = cellsRef.current.filter((c) => ids.includes(c.id));
+                                    const last = moved.find((c) => c.id === selectedId) ?? moved[0];
+                                    if (last) lastBox.current = { x1: last.x1, y1: last.y1, x2: last.x2, y2: last.y2 };
                                     void readDots(moved);
                                 }}
                                 onToggleDot={toggleDot}
@@ -866,8 +930,39 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                 </section>
 
                                 <section className="flex flex-col gap-3">
-                                    <h2 className="text-xs font-medium text-muted-foreground">Selected cell</h2>
-                                    {selected ? (
+                                    <h2 className="text-xs font-medium text-muted-foreground">{group.length > 1 ? `${group.length} cells selected` : 'Selected cell'}</h2>
+                                    {group.length > 1 ? (
+                                        <>
+                                            <p className="text-xs text-muted-foreground">
+                                                Drag any of them to move all, or a corner to resize all by the same amount. Arrows move them, Alt + arrows resize. Shift + click takes a
+                                                cell out.
+                                            </p>
+                                            <div className="flex flex-wrap gap-1.5">
+                                                {group.some(isUnsure) && (
+                                                    <Button size="xs" onClick={() => confirm(group.map((c) => c.id))}>
+                                                        <Check />
+                                                        All correct (V)
+                                                    </Button>
+                                                )}
+                                                {classifierUrl && (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="xs"
+                                                        onClick={() => {
+                                                            snapshot();
+                                                            void readDots(group, true);
+                                                        }}
+                                                    >
+                                                        Re-read dots (C)
+                                                    </Button>
+                                                )}
+                                                <Button variant="destructive" size="xs" onClick={() => remove(group.map((c) => c.id))}>
+                                                    <Trash2 />
+                                                    Delete {group.length}
+                                                </Button>
+                                            </div>
+                                        </>
+                                    ) : selected ? (
                                         <>
                                             <Loupe photoUrl={page.photo_url} box={selected} width={page.width} height={page.height} pattern={selected.pattern} />
                                             <DotPad pattern={selected.pattern} serverPattern={selected.serverPattern} onToggle={(d) => toggleDot(selected.id, d)} />
@@ -897,7 +992,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                             </div>
                                             <div className="flex flex-wrap gap-1.5">
                                                 {isUnsure(selected) && (
-                                                    <Button size="xs" onClick={() => confirm(selected.id)}>
+                                                    <Button size="xs" onClick={() => confirm([selected.id])}>
                                                         <Check />
                                                         Correct (V)
                                                     </Button>
@@ -914,7 +1009,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                                         Re-read dots (C)
                                                     </Button>
                                                 )}
-                                                <Button variant="destructive" size="xs" onClick={() => remove(selected.id)}>
+                                                <Button variant="destructive" size="xs" onClick={() => remove([selected.id])}>
                                                     <Trash2 />
                                                     Delete
                                                 </Button>
@@ -922,7 +1017,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                         </>
                                     ) : (
                                         <p className="text-xs text-muted-foreground">
-                                            Click a box, or press Tab to walk the cells in reading order. Drag on the photo to add a missing cell.
+                                            Click a box, or press Tab to walk the cells in reading order. Drag on the photo to add a missing cell. Shift + click or Shift + drag selects
+                                            several.
                                         </p>
                                     )}
                                 </section>
