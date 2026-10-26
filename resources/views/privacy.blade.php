@@ -79,139 +79,124 @@
         <div class="container" style="max-width: 900px;">
             <div class="custom-card" style="padding: 48px; margin-bottom: 40px;">
                 <div class="effective-date">
-                    This policy is effective as of February 6, 2026
+                    This policy is effective as of October 26, 2026
                 </div>
 
                 <div class="privacy-content">
                     <p>
-                        <strong>Braille Recognition</strong> is provided by <strong>AL-FOCUS TECH LLC</strong> at no cost
-                        and is intended for use as is.
-                        This page explains how we collect, use, and disclose information when you use the service.
-                    </p>
-                    <p>
-                        If you choose to use our Service, then you agree to the collection and use of information in
-                        relation to this
-                        policy. The Personal Information that we collect is used for providing and improving the Service. We
-                        will not use or share your information with
-                        anyone except as described in this Privacy Policy.
-                    </p>
-                    <p>
-                        The terms used in this Privacy Policy have the same meanings as in our Terms and Conditions, which
-                        are accessible at
-                        BrailleRecognition unless otherwise defined in this Privacy Policy.
+                        <strong>Braille Recognition</strong> (in the stores: Braille Translator &amp; Scanner) is provided by
+                        <strong>AL-FOCUS TECH LLC</strong>. This page explains what information the app and this website
+                        collect, how we use it, and the choices you have.
                     </p>
 
-                    <h2>Information Collection and Use</h2>
-                    <p>
-                        For a better experience, while using our Service, we may require you to provide us with certain
-                        personally
-                        identifiable information. The information that we request will be retained on your device and is not
-                        collected by us in any way.
-                    </p>
-                    <p>
-                        The app does use third-party services that may collect information used to identify you.
-                    </p>
-                    <p>
-                        Links to the privacy policy of third-party service providers used by the app:
-                    </p>
+                    <h2>What we collect</h2>
                     <ul>
-                        <li><a href="https://www.google.com/policies/privacy/" target="_blank"
-                                rel="noopener noreferrer">Google Play
-                                Services</a></li>
-                        <li><a href="https://firebase.google.com/policies/analytics" target="_blank"
-                                rel="noopener noreferrer">Google
-                                Analytics for Firebase</a></li>
-                        <li><a href="https://firebase.google.com/support/privacy/" target="_blank"
-                                rel="noopener noreferrer">Firebase
-                                Crashlytics</a></li>
-                    </ul>
-
-                    <h2>Log Data</h2>
-                    <p>
-                        We want to inform you that whenever you use our Service, in a case of an error in the app
-                        we collect data and information (through third-party products) on your phone called Log Data. This
-                        Log Data may
-                        include information such as your device Internet Protocol ("IP") address, device name, operating
-                        system version, the
-                        configuration of the app when utilizing our Service, the time and date of your use of the Service,
-                        and other
-                        statistics.
-                    </p>
-
-                    <h2>Cookies</h2>
-                    <p>
-                        Cookies are files with a small amount of data that are commonly used as anonymous unique
-                        identifiers. These are sent
-                        to your browser from the websites that you visit and are stored on your device's internal memory.
-                    </p>
-                    <p>
-                        This Service does not use these "cookies" explicitly. However, the app may use third-party code and
-                        libraries that use
-                        "cookies" to collect information and improve their services. You have the option to either accept or
-                        refuse these cookies
-                        and know when a cookie is being sent to your device. If you choose to refuse our cookies, you may
-                        not be able to use some
-                        portions of this Service.
-                    </p>
-
-                    <h2>Service Providers</h2>
-                    <p>
-                        We may employ third-party companies and individuals due to the following reasons:
-                    </p>
-                    <ul>
-                        <li>To facilitate our Service;</li>
-                        <li>To provide the Service on our behalf;</li>
-                        <li>To perform Service-related services; or</li>
-                        <li>To assist us in analyzing how our Service is used.</li>
+                        <li>
+                            <strong>Your account.</strong> If you sign in with Apple or Google, we receive your name (if
+                            you share it), your email address (or Apple's private relay address) and an account identifier.
+                            Without signing in, the app uses an anonymous account tied to this installation.
+                        </li>
+                        <li>
+                            <strong>Photos you scan and their results.</strong> Braille is recognised on your device. The
+                            photo, the recognised braille and the translated text are then saved to your account on our
+                            server, so they appear in your history. Photos of scans that could not be read may also be saved,
+                            to find out why.
+                        </li>
+                        <li>
+                            <strong>App usage.</strong> Events such as opening the app, starting a scan, how long it took and
+                            whether it succeeded, with the app version, platform, language setting and subscription status.
+                            They are linked to a random installation identifier and to your account if you have one.
+                        </li>
+                        <li>
+                            <strong>Purchases.</strong> Subscriptions are paid through the App Store or Google Play. We do
+                            not see your payment details; we receive the subscription status through RevenueCat.
+                        </li>
+                        <li>
+                            <strong>Messages you send us</strong>, for example through the contact or account deletion forms.
+                        </li>
                     </ul>
                     <p>
-                        We want to inform users of this Service that these third parties have access to their Personal
-                        Information. The reason is to perform the tasks assigned to them on our behalf. However, they are
-                        obligated not to
-                        disclose or use the information for any other purpose.
+                        The camera is used only to take the photo you scan. While the in-app camera is open, the preview is
+                        checked on your device for braille; preview frames are not stored or sent anywhere.
+                    </p>
+
+                    <h2>How we use it</h2>
+                    <ul>
+                        <li>To provide the service: recognise braille, keep your history, and manage your account and
+                            subscription.</li>
+                        <li>To understand how the app is used and fix problems.</li>
+                        <li>
+                            <strong>To improve braille recognition.</strong> Our team may look at photos of braille pages
+                            scanned with the app and mark the braille cells on them by hand. These marked photos are used to
+                            train and test our recognition models, which then ship in the app. Training runs on our servers
+                            and on cloud computing services (currently Kaggle, a Google service), to which photos are copied
+                            only for the duration of the training. The trained models do not contain your photos, and we do
+                            not use the photos for anything else.
+                        </li>
+                    </ul>
+                    <p>
+                        We do not sell your information, we do not show advertising, and we do not track you across other
+                        companies' apps or websites.
+                    </p>
+
+                    <h2>Who we share it with</h2>
+                    <p>We share information only with services that work for us and only as needed for the purposes above:</p>
+                    <ul>
+                        <li><a href="https://www.apple.com/legal/privacy/" target="_blank" rel="noopener noreferrer">Apple</a>
+                            and <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google</a>,
+                            for sign-in, app distribution and in-app purchases;</li>
+                        <li><a href="https://www.revenuecat.com/privacy/" target="_blank" rel="noopener noreferrer">RevenueCat</a>,
+                            to manage subscriptions;</li>
+                        <li><a href="https://www.kaggle.com/privacy" target="_blank" rel="noopener noreferrer">Kaggle (Google)</a>,
+                            for model training as described above;</li>
+                        <li>the companies that host our servers.</li>
+                    </ul>
+                    <p>We may also disclose information if the law requires it.</p>
+
+                    <h2>How long we keep it</h2>
+                    <p>
+                        We keep your account, photos and history until you delete them or your account. Usage events are kept
+                        for analysis and are no longer linked to you once your account is deleted.
+                    </p>
+
+                    <h2>Your choices</h2>
+                    <ul>
+                        <li><strong>Delete a scan:</strong> remove it from your history in the app. Its photo is deleted from
+                            our server and is no longer used for training.</li>
+                        <li><strong>Delete your account:</strong> in the app, go to Profile &gt; Account &gt; Delete Account,
+                            or use the <a href="{{ route('profile.deletion.form') }}">account deletion form</a>. Your account,
+                            history and photos are deleted from our server.</li>
+                        <li><strong>Opt out of training:</strong> email us at <a href="mailto:info@alfocus.uz">info@alfocus.uz</a>
+                            and we will exclude your photos from future training while keeping your history.</li>
+                    </ul>
+                    <p>
+                        Models that were already trained before a deletion or opt-out are not retrained because of it; they
+                        do not contain the photos themselves. Depending on where you live, you may also have the right to
+                        access or correct your information or to object to how we use it. Write to us to do so.
                     </p>
 
                     <h2>Security</h2>
                     <p>
-                        We value your trust in providing us your Personal Information, thus we are striving to use
-                        commercially
-                        acceptable means of protecting it. But remember that no method of transmission over the internet, or
-                        method of electronic
-                        storage is 100% secure and reliable, and we cannot guarantee its absolute security.
-                    </p>
-
-                    <h2>Links to Other Sites</h2>
-                    <p>
-                        This Service may contain links to other sites. If you click on a third-party link, you will be
-                        directed to that site. Note
-                        that these external sites are not operated by us. Therefore, we strongly advise you to review the
-                        Privacy Policy of these websites. We have no control over and assume no responsibility for the
-                        content,
-                        privacy policies, or practices of any third-party sites or services.
+                        Information is sent over encrypted connections, and access to photos and to the tools used to mark
+                        them is limited to our team. No method of transmission or storage is completely secure, so we cannot
+                        guarantee absolute security.
                     </p>
 
                     <h2>Children's Privacy</h2>
                     <p>
-                        These Services do not address anyone under the age of 13. We do not knowingly collect personally
-                        identifiable information from children under 13 years of age. In the case we discover that a child
-                        under 13 has provided
-                        us with personal information, we immediately delete this from our servers. If you are a parent or
-                        guardian
-                        and you are aware that your child has provided us with personal information, please contact us so
-                        that
-                        we will be able to take the necessary actions.
+                        The service is not directed at children under 13, and we do not knowingly collect personal
+                        information from them. If you are a parent or guardian and believe your child has given us personal
+                        information, contact us and we will delete it.
                     </p>
 
                     <h2>Changes to This Privacy Policy</h2>
                     <p>
-                        We may update our Privacy Policy from time to time. Thus, you are advised to review this page
-                        periodically for any changes. We will notify you of any changes by posting the new Privacy Policy on
-                        this page.
+                        We may update this policy. The new version is posted on this page with its effective date.
                     </p>
 
                     <h2>Contact Us</h2>
                     <p>
-                        If you have any questions or suggestions about our Privacy Policy, do not hesitate to contact us at
+                        If you have any questions about this policy, contact us at
                         <a href="mailto:info@alfocus.uz">info@alfocus.uz</a>.
                     </p>
                 </div>
