@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Translation;
 use App\Support\BrailleReader;
+use App\Support\OcrModel;
 use App\Support\Sql;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -122,11 +123,12 @@ class TranslationController extends Controller
 
     public function show(Translation $translation): JsonResponse
     {
-        $translation->load('user:id,name,email,auth_provider');
+        $translation->load('user:id,name,email,auth_provider,install_id');
         $meta = json_decode((string) $translation->result_json, true);
         $meta = is_array($meta) ? $meta : [];
 
         $device = ($meta['engine'] ?? null) === 'device';
+        $appVersion = $device ? OcrModel::appVersion($translation, $meta) : null;
 
         return response()->json(['data' => [
             'id' => $translation->id,
@@ -159,7 +161,8 @@ class TranslationController extends Controller
             // What the recogniser reported about itself; the per-cell boxes are left out.
             'engine' => $device ? 'device' : 'server',
             'backend' => $meta['backend'] ?? null,
-            'model' => $meta['model'] ?? null,
+            'model' => OcrModel::name($meta['model'] ?? null, $appVersion),
+            'app_version' => $appVersion,
             'size' => isset($meta['width'], $meta['height']) ? "{$meta['width']}×{$meta['height']}" : null,
             'timings' => Arr::where((array) ($meta['timings'] ?? []), fn ($value) => is_numeric($value)),
             'detected_lang' => $meta['lang_guess']['best'] ?? null,

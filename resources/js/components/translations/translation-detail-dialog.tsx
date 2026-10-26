@@ -28,6 +28,7 @@ interface TranslationDetail {
     engine: TranslationRow['engine'];
     backend: string | null;
     model: string | null;
+    app_version: string | null;
     size: string | null;
     timings: Record<string, number>;
     detected_lang: string | null;
@@ -103,6 +104,7 @@ export function TranslationDetailDialog({ translationId, detailUrl, onOpenChange
                             <DetailField label="Read by" value={ENGINE_LABELS[translation.engine]} />
                             <DetailField label="Backend" value={translation.backend} />
                             <DetailField label="Photo size" value={translation.size} />
+                            <DetailField label="App version" value={translation.app_version} />
                             <DetailField label="Model" value={translation.model} className="col-span-2 sm:col-span-3" />
                             <DetailField label="Detected language" value={translation.detected_lang} />
                             <DetailField label="Language from" value={translation.lang_source} />
