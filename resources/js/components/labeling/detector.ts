@@ -6,9 +6,10 @@ import { classify, loadOrt, session, type GrayPhoto } from './dot-classifier';
  * (BrailleRecognitionFlutter lib/ocr/pipeline.dart): letterbox to 1024 with
  * grey 114 padding, YOLO output -> boxes over 0.25, overlap NMS (over the
  * smaller box, 0.4), then the dot classifier; cells with no dots are dropped.
+ * A lower [conf] finds more cells on faint pages (and more false ones).
  */
 const DET_SIZE = 1024;
-const DET_CONF = 0.25;
+export const DET_CONF = 0.25;
 const MAX_OVERLAP = 0.4;
 const MAX_CELLS = 1500;
 
@@ -31,7 +32,7 @@ function overlap(a: Found, b: Found): number {
  * Cells the models find in the photo, unturned, in its [width] x [height]
  * pixels: [x1, y1, x2, y2, pattern, detector score, dot margin], as the phone stores them.
  */
-export async function detectCells(detectorUrl: string, classifierUrl: string, photoUrl: string, photo: GrayPhoto): Promise<number[][]> {
+export async function detectCells(detectorUrl: string, classifierUrl: string, photoUrl: string, photo: GrayPhoto, conf = DET_CONF): Promise<number[][]> {
     const { width, height } = photo;
     const img = new Image();
     img.crossOrigin = 'anonymous';
@@ -67,7 +68,7 @@ export async function detectCells(detectorUrl: string, classifierUrl: string, ph
     const cand: Found[] = [];
     for (let i = 0; i < n; i++) {
         const score = out[4 * n + i];
-        if (score < DET_CONF) continue;
+        if (score < conf) continue;
         const cx = out[i];
         const cy = out[n + i];
         const bw = out[2 * n + i];

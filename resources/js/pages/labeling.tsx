@@ -17,11 +17,12 @@ import {
     type LabelCell,
     type Suggestion,
 } from '@/components/labeling/cells';
-import { detectCells } from '@/components/labeling/detector';
+import { DET_CONF, detectCells } from '@/components/labeling/detector';
 import { classify, grayPhoto, snap, turnedPhoto, type GrayPhoto } from '@/components/labeling/dot-classifier';
 import { COLORS, Editor, type EditorHandle } from '@/components/labeling/editor';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
@@ -119,7 +120,7 @@ const SHORTCUTS: [string, string][] = [
     ['Delete', 'Delete the selected cells; the red boxes under them go too, also when cells are moved'],
     ['Arrows', 'Nudge (Shift: 5 px); Alt + arrows: resize'],
     ['R', 'Turn the photo a quarter clockwise, cells and all'],
-    ['M', 'Read the whole page again with the model, as it is turned now (replaces the cells; ⌘Z undoes)'],
+    ['M', 'Read the whole page again with the model, as it is turned now (replaces the cells; ⌘Z undoes). The number next to its button is the model threshold: lower it for faint pages'],
     ['H / D', 'Hide boxes / dots'],
     ['Space + drag, scroll', 'Pan'],
     ['Pinch, ⌘ + scroll, + / −', 'Zoom; F fits'],
@@ -223,7 +224,11 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     const [readingBusy, setReadingBusy] = useState(false);
     const [dirty, setDirty] = useState(false);
     /** Where the page's starting cells came from: the phone, or the newer model run here. */
-    const [source, setSource] = useState<{ kind: 'phone' | 'running' | 'model' | 'failed'; cells?: number; seconds?: number }>({ kind: 'phone' });
+    const [source, setSource] = useState<{ kind: 'phone' | 'running' | 'model' | 'failed'; cells?: number; seconds?: number; conf?: number }>({ kind: 'phone' });
+    /** The detector's score threshold for M: lower finds more cells on faint pages. Each page starts at the app's. */
+    const [threshold, setThreshold] = useState(DET_CONF);
+    /** The threshold the model last read this page with, so a change to it reads the page again. */
+    const ranConf = useRef(DET_CONF);
     const undo = useRef<LabelCell[][]>([]);
     const redo = useRef<LabelCell[][]>([]);
     const nextId = useRef(1);
@@ -295,6 +300,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 setDirty(Boolean(restore));
                 setRestoredAt(restore?.savedAt ?? null);
                 setLang(langs.includes(data.lang) ? data.lang : 'EN');
+                ranConf.current = DET_CONF;
+                setThreshold(DET_CONF);
 
                 // An unlabeled page starts from the newer model's cells, unless work on it was already restored.
                 const fresh = !data.cells && !restore && data.photo_url;
@@ -516,15 +523,17 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
      * cells: for photos that came in sideways, which it reads badly until turned.
      * Undoable; a turn made while it runs wins.
      */
-    const rereadPage = useCallback(async () => {
+    const rereadPage = useCallback(async (conf?: number) => {
         const url = turnedUrl();
         const photo = loadGray();
         if (!page || !detectorUrl || !classifierUrl || !url || !photo || source.kind === 'running') return;
         const r = rotationRef.current;
         const t0 = performance.now();
+        const c = conf ?? threshold;
+        ranConf.current = c;
         setSource({ kind: 'running' });
         try {
-            const rows = await detectCells(detectorUrl, classifierUrl, await url, await photo);
+            const rows = await detectCells(detectorUrl, classifierUrl, await url, await photo, c);
             if (rotationRef.current !== r) {
                 setSource({ kind: 'phone' });
                 return;
@@ -535,12 +544,19 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             setCells(fresh);
             setSelectedId(null);
             setRejected(new Set());
-            setSource({ kind: 'model', cells: fresh.length, seconds: (performance.now() - t0) / 1000 });
+            setSource({ kind: 'model', cells: fresh.length, seconds: (performance.now() - t0) / 1000, conf: c });
         } catch (e) {
             setSource({ kind: 'failed' });
             setNotice(`The model could not read the page: ${(e as Error).message}`);
         }
-    }, [page, detectorUrl, classifierUrl, turnedUrl, loadGray, source.kind, snapshot, pageSuggestions, setSelectedId]);
+    }, [page, detectorUrl, classifierUrl, turnedUrl, loadGray, source.kind, threshold, snapshot, pageSuggestions, setSelectedId]);
+
+    // A new threshold reads the page again once the spinner settles (and after a run that is going on).
+    useEffect(() => {
+        if (!page || source.kind === 'running' || threshold === ranConf.current) return;
+        const t = setTimeout(() => void rereadPage(threshold), 500);
+        return () => clearTimeout(t);
+    }, [page, source.kind, threshold, rereadPage]);
 
     const addCell = useCallback(
         (box: Box, from?: Partial<LabelCell>, read = true) => {
@@ -946,7 +962,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                             {source.kind === 'running'
                                 ? 'New model reading…'
                                 : source.kind === 'model'
-                                  ? `New model · ${source.cells} cells · ${source.seconds?.toFixed(1)} s`
+                                  ? `New model · ${source.cells} cells · ${source.seconds?.toFixed(1)} s${source.conf !== undefined && source.conf !== DET_CONF ? ` · ≥ ${source.conf}` : ''}`
                                   : 'New model failed: phone cells'}
                         </Badge>
                     )}
@@ -1026,6 +1042,22 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                 >
                                     {source.kind === 'running' ? <LoaderCircle className="animate-spin" /> : <ScanSearch />}
                                 </Button>
+                            )}
+                            {detectorUrl && classifierUrl && (
+                                <Input
+                                    type="number"
+                                    min={0.01}
+                                    max={0.95}
+                                    step={0.05}
+                                    value={threshold}
+                                    disabled={!page}
+                                    title={`Model threshold: lower finds more cells on faint pages, and more false ones (the app uses ${DET_CONF}). Changing it reads the page again.`}
+                                    className="h-7 w-[4.5rem] px-1.5 text-xs md:text-xs"
+                                    onChange={(e) => {
+                                        const v = Math.round(Number(e.target.value) * 100) / 100;
+                                        if (v >= 0.01 && v <= 0.95) setThreshold(v);
+                                    }}
+                                />
                             )}
                             <Button variant="ghost" size="icon-sm" title="Fit (F)" onClick={() => editor.current?.fit()}>
                                 <Maximize />
