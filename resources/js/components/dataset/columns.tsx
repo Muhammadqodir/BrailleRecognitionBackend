@@ -24,7 +24,7 @@ export interface DatasetRow {
     seconds: number;
 }
 
-export const TAG_LABELS: Record<string, string> = { two_sided: 'Two-sided', side_light: 'Light from below / side' };
+export const TAG_LABELS: Record<string, string> = { two_sided: 'Two-sided', side_light: 'Light from below / side', recheck: 'Recheck' };
 
 export const STATUS_LABELS: Record<DatasetRow['status'], string> = { todo: 'To label', done: 'Labeled', skipped: 'Skipped' };
 

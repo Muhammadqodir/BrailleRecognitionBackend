@@ -95,6 +95,11 @@ const SKIP_LABELS: Record<string, string> = {
 const TAG_LABELS: Record<string, { label: string; hint: string; key: string }> = {
     two_sided: { label: 'Two-sided', hint: 'The back’s dents show between the dots. Label only the raised side.', key: 'T' },
     side_light: { label: 'Light from below / side', hint: 'Raised dots can look like dents in this light.', key: 'L' },
+    recheck: {
+        label: 'Recheck',
+        hint: 'The model disagrees with these labels where it is sure: cells left out, extra boxes or dots. Look again, then untick.',
+        key: 'K',
+    },
 };
 
 const SHORTCUTS: [string, string][] = [
@@ -119,7 +124,7 @@ const SHORTCUTS: [string, string][] = [
     ['Space + drag, scroll', 'Pan'],
     ['Pinch, ⌘ + scroll, + / −', 'Zoom; F fits'],
     ['⌘Z / ⇧⌘Z', 'Undo / redo'],
-    ['T / L', 'Mark the page two-sided / lit from below or the side'],
+    ['T / L / K', 'Mark the page two-sided / lit from below or the side / to recheck'],
     ['Enter', 'Save and go to the next page'],
 ];
 
@@ -843,6 +848,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                 toggleTag('two_sided');
             } else if (key === 'l' && tagNames.includes('side_light')) {
                 toggleTag('side_light');
+            } else if (key === 'k' && tagNames.includes('recheck')) {
+                toggleTag('recheck');
             } else if (key === 'h') {
                 setShowBoxes((v) => !v);
             } else if (key === 'd') {
@@ -1090,6 +1097,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
                                         })}
                                     </div>
                                     {tags.includes('two_sided') && <p className="text-xs text-muted-foreground">{TAG_LABELS.two_sided.hint}</p>}
+                                    {tags.includes('recheck') && <p className="text-xs text-muted-foreground">{TAG_LABELS.recheck.hint}</p>}
                                 </section>
 
                                 <section className="flex flex-col gap-2">

@@ -15,9 +15,10 @@ class LabelPage extends Model
     /**
      * two_sided: the back's dents show between the front's dots (only the
      * front is labeled); side_light: light from below or from the side, so
-     * raised dots can look like dents.
+     * raised dots can look like dents; recheck: the labels disagree with the
+     * model where it is sure (cells left out, extra boxes, dots), look again.
      */
-    public const TAGS = ['two_sided', 'side_light'];
+    public const TAGS = ['two_sided', 'side_light', 'recheck'];
 
     public const SKIP_REASONS = ['not_braille', 'unreadable', 'rotated', 'duplicate', 'other'];
 
