@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\LabelPage;
 use App\Models\Translation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -104,6 +105,12 @@ class TranslationController extends Controller
      * text. Scoped to the owner so one user cannot touch
      * another's row by guessing an id — the legacy backend had exactly that
      * hole on set_fav and set_rating.
+     *
+     * Or turned by hand: the app reads the photo again turned and sends the
+     * turned photo as `image` (a multipart POST with _method=PATCH) with the
+     * new cells, which only line up with it. A page already in the labeling
+     * queue keeps its photo, since its labels are drawn on that one; the
+     * whole change is refused so the row stays consistent.
      */
     public function update(Request $request, Translation $translation): JsonResponse
     {
@@ -119,10 +126,27 @@ class TranslationController extends Controller
             'result' => ['nullable', 'string'],
             'result_braille' => ['nullable', 'string'],
             'result_json' => ['nullable', 'string'],
+            'image' => ['nullable', 'file', 'mimes:jpg,jpeg', 'max:8192'],
         ]);
+        unset($validated['image']);
+
+        if ($request->hasFile('image')) {
+            if (! $translation->storedPhotoPath() || LabelPage::where('translation_id', $translation->id)->exists()) {
+                return response()->json(['message' => 'This scan\'s photo cannot be replaced.'], 409);
+            }
+            $old = $translation->storedPhotoPath();
+            $path = $request->file('image')->storeAs(
+                Translation::SCAN_DIR, Str::uuid().'.jpg', 'public');
+            $validated['input_file'] = $path;
+            // A new name, so no cache anywhere shows the old photo under it.
+            $validated['result_marked'] = Storage::disk('public')->url($path);
+        }
 
         $translation->fill(array_filter($validated, fn ($v) => $v !== null));
         $translation->save();
+        if (isset($old)) {
+            Storage::disk('public')->delete($old);
+        }
 
         return response()->json(['message' => 'Updated.', 'data' => $translation]);
     }

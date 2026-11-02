@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\LabelPage;
 use App\Models\Translation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -58,6 +59,61 @@ class TranslationPhotoTest extends TestCase
         $this->actingAs($other, 'sanctum')->patchJson("/api/translations/{$t->id}", ['lang' => 'DE'])
             ->assertNotFound();
         $this->assertSame('RU', $t->refresh()->lang);
+    }
+
+    public function test_scan_turned_by_hand_gets_its_turned_photo(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $id = $this->actingAs($user, 'sanctum')->post('/api/translations', [
+            'lang' => 'EN',
+            'result' => 'junk',
+            'result_json' => '{"engine":"device","width":800,"height":600,"cells":[]}',
+            'image' => UploadedFile::fake()->image('scan.jpg', 800, 600),
+        ], ['Accept' => 'application/json'])->json('data.id');
+        $before = Translation::findOrFail($id)->input_file;
+
+        $this->actingAs($user, 'sanctum')->post("/api/translations/{$id}", [
+            '_method' => 'PATCH',
+            'lang' => 'RU',
+            'result' => 'привет',
+            'result_braille' => '⠏⠗⠊⠺⠑⠞',
+            'result_json' => '{"engine":"device","width":600,"height":800,"manual_turn":90,"cells":[]}',
+            'image' => UploadedFile::fake()->image('scan.jpg', 600, 800),
+        ], ['Accept' => 'application/json'])->assertOk();
+
+        $t = Translation::findOrFail($id);
+        $this->assertNotSame($before, $t->input_file);
+        $this->assertStringStartsWith('scans/', $t->input_file);
+        Storage::disk('public')->assertExists($t->input_file);
+        Storage::disk('public')->assertMissing($before);
+        $this->assertSame(Storage::disk('public')->url($t->input_file), $t->result_marked);
+        $this->assertSame('привет', $t->result);
+        $this->assertStringContainsString('"manual_turn":90', $t->result_json);
+    }
+
+    public function test_labeled_scan_keeps_its_photo(): void
+    {
+        Storage::fake('public');
+        $user = User::factory()->create();
+        $id = $this->actingAs($user, 'sanctum')->post('/api/translations', [
+            'lang' => 'EN',
+            'result' => 'junk',
+            'result_json' => '{"engine":"device","cells":[]}',
+            'image' => UploadedFile::fake()->image('scan.jpg', 800, 600),
+        ], ['Accept' => 'application/json'])->json('data.id');
+        LabelPage::create(['translation_id' => $id, 'split' => 'train', 'status' => 'todo']);
+        $before = Translation::findOrFail($id)->input_file;
+
+        $this->actingAs($user, 'sanctum')->post("/api/translations/{$id}", [
+            '_method' => 'PATCH',
+            'result' => 'turned',
+            'image' => UploadedFile::fake()->image('scan.jpg', 600, 800),
+        ], ['Accept' => 'application/json'])->assertStatus(409);
+
+        $t = Translation::findOrFail($id);
+        $this->assertSame($before, $t->input_file);
+        $this->assertSame('junk', $t->result);
     }
 
     public function test_thumbs_down_is_saved(): void
