@@ -32,6 +32,13 @@ use Illuminate\Support\Facades\Hash;
  * picks up where it stopped instead of starting over.
  *
  * Dry by default — pass --commit to actually write.
+ *
+ * Insert-only (changed 2026-11-10): rows already here, matched on `legacy_id`,
+ * are never rewritten. Since the first import people have signed in through
+ * this app and changed their email or RevenueCat id, and some scans were
+ * edited here; overwriting them from the frozen legacy copy would undo that
+ * (a stale rc_user_id loses a subscription). An email already used by an
+ * account here is dropped from the incoming row, as legacy duplicates are.
  */
 class ImportLegacyData extends Command
 {
@@ -113,6 +120,20 @@ class ImportLegacyData extends Command
             $emailOwner[$email] = $u->id;
         }
 
+        // Emails already taken by an account in this database: the unique
+        // index would reject the row, so the incoming legacy row goes without.
+        $takenEmails = DB::table('users')
+            ->whereNotNull('email')
+            ->where(fn ($q) => $q->whereNull('legacy_id')->orWhereNotIn('legacy_id', $users->pluck('id')))
+            ->pluck('email')
+            ->map(fn ($e) => strtolower(trim((string) $e)))
+            ->flip();
+
+        // Same for RevenueCat ids, also unique here.
+        $takenRc = DB::table('users')->whereNotNull('rc_user_id')->pluck('rc_user_id')->flip();
+
+        $alreadyHere = DB::table('users')->whereIn('legacy_id', $activeIds)->count();
+
         $blankEmails = $users->filter(
             fn ($u) => trim((string) $u->email) === '' || !str_contains((string) $u->email, '@')
         )->count();
@@ -121,6 +142,10 @@ class ImportLegacyData extends Command
             $email = strtolower(trim((string) $u->email));
             return $email !== '' && isset($emailOwner[$email]) && $emailOwner[$email] !== $u->id;
         })->count();
+
+        $emailClashes = $users->filter(
+            fn ($u) => isset($takenEmails[strtolower(trim((string) $u->email))])
+        )->count();
 
         $translationCount = DB::connection('legacy')
             ->table('translations')
@@ -131,6 +156,9 @@ class ImportLegacyData extends Command
         $this->line("Legacy user rows found:    <info>{$users->count()}</info>");
         $this->line("Rows with no usable email: <comment>{$blankEmails}</comment>");
         $this->line("Duplicate emails dropped:  <comment>{$dupesDropped}</comment>");
+        $this->line("Email taken here, dropped: <comment>{$emailClashes}</comment>");
+        $this->line("RevenueCat id taken here:  <comment>" . $users->filter(fn ($u) => isset($takenRc[trim((string) ($u->rc_user_id ?? ''))]))->count() . "</comment> (dropped)");
+        $this->line("Accounts already here:     <comment>{$alreadyHere}</comment> (left as they are)");
         $this->line("Translations to import:    <info>{$translationCount}</info>");
         $this->newLine();
 
@@ -147,11 +175,16 @@ class ImportLegacyData extends Command
         $rows = [];
         $now = now()->toDateTimeString();
 
+        $existing = DB::table('users')->whereIn('legacy_id', $activeIds)->pluck('legacy_id')->flip();
+        $users = $users->reject(fn ($u) => isset($existing[$u->id]))->values();
+        $bar->setMaxSteps(max(1, $users->count()));
+
         foreach ($users as $u) {
             $email = strtolower(trim((string) $u->email));
             $keepEmail = $email !== ''
                 && str_contains($email, '@')
-                && ($emailOwner[$email] ?? null) === $u->id;
+                && ($emailOwner[$email] ?? null) === $u->id
+                && !isset($takenEmails[$email]);
 
             $name = trim((string) $u->name);
             $role = trim((string) $u->role);
@@ -170,7 +203,7 @@ class ImportLegacyData extends Command
                 'role' => $role !== '' && $role !== 'undefined' ? mb_substr($role, 0, 255) : null,
                 'avatar' => $avatar !== '' && $avatar !== 'undefined' ? mb_substr($avatar, 0, 255) : null,
                 'auth_provider' => $this->mapProvider((string) ($u->auth_method ?? '')),
-                'rc_user_id' => $rc !== '' ? mb_substr($rc, 0, 64) : null,
+                'rc_user_id' => $rc !== '' && !isset($takenRc[$rc]) ? mb_substr($rc, 0, 64) : null,
                 'legacy_token' => mb_substr(trim((string) $u->token), 0, 64) ?: null,
                 'last_seen_at' => $lastSeen[$u->id] ?? null,
                 'created_at' => $u->date ?: $now,
@@ -185,16 +218,7 @@ class ImportLegacyData extends Command
         $importedUsers = 0;
         foreach (array_chunk($rows, self::CHUNK) as $chunk) {
             DB::transaction(function () use ($chunk, &$importedUsers) {
-                DB::table('users')->upsert(
-                    $chunk,
-                    ['legacy_id'],
-                    // `password` is deliberately absent: it is set on insert and
-                    // never rewritten, so re-running does not re-hash 1,164
-                    // passwords for no reason.
-                    ['name', 'email', 'role', 'avatar', 'auth_provider',
-                     'rc_user_id', 'legacy_token', 'last_seen_at', 'updated_at']
-                );
-                $importedUsers += count($chunk);
+                $importedUsers += DB::table('users')->insertOrIgnore($chunk);
             });
             $this->line("  users: {$importedUsers}/" . count($rows));
         }
@@ -236,19 +260,16 @@ class ImportLegacyData extends Command
                 }
 
                 DB::transaction(function () use ($batch, &$importedTranslations) {
-                    DB::table('translations')->upsert(
-                        $batch,
-                        ['legacy_id'],
-                        ['user_id', 'result_braille', 'result', 'result_json',
-                         'input_file', 'result_marked', 'lang', 'is_fav', 'updated_at']
-                    );
-                    $importedTranslations += count($batch);
+                    $importedTranslations += DB::table('translations')->insertOrIgnore($batch);
                 });
                 $this->line("  translations: {$importedTranslations}");
             });
 
         $this->newLine();
-        $this->info("Imported {$importedUsers} accounts and {$importedTranslations} translations.");
+        if ($importedUsers < count($rows)) {
+            $this->warn('Skipped ' . (count($rows) - $importedUsers) . ' accounts on a unique-index clash; their scans were not imported.');
+        }
+        $this->info("Added {$importedUsers} accounts and {$importedTranslations} translations (existing rows untouched).");
         $this->comment('The legacy database was not modified.');
 
         return self::SUCCESS;
