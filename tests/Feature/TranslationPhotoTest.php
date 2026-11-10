@@ -149,6 +149,20 @@ class TranslationPhotoTest extends TestCase
         $this->assertSame('results/temp.marked.jpg', $res->json('data.result_marked'));
     }
 
+    public function test_history_sends_ocr_host_photos_as_absolute_urls(): void
+    {
+        config(['braille.ocr_host_url' => 'https://example.test/ocr-archive/']);
+        $user = User::factory()->create();
+        $user->translations()->create(['lang' => 'RU', 'result' => 'a', 'result_marked' => 'results/temp.marked.jpg']);
+        $user->translations()->create(['lang' => 'EN', 'result' => 'b', 'result_marked' => 'https://cdn.test/x.jpg']);
+
+        $res = $this->actingAs($user, 'sanctum')->getJson('/api/translations')->assertOk();
+
+        $marked = collect($res->json('data'))->pluck('result_marked')->sort()->values()->all();
+        $this->assertSame(['https://cdn.test/x.jpg', 'https://example.test/ocr-archive/results/temp.marked.jpg'], $marked);
+        $this->assertSame('results/temp.marked.jpg', $user->translations()->where('lang', 'RU')->value('result_marked'));
+    }
+
     public function test_deleting_a_user_removes_their_photos(): void
     {
         Storage::fake('public');

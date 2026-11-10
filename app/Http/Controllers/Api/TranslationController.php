@@ -23,6 +23,23 @@ class TranslationController extends Controller
     private const FREE_HISTORY_LIMIT = 3;
 
     /**
+     * Scans read by the old OCR host store a path on that host ("results/...").
+     * History sends them as absolute URLs so 4.x apps, which take an absolute
+     * URL as is, load them from wherever OCR_HOST_URL points (the copy on this
+     * server since 2026-11-10) instead of the app's built-in OCR host address.
+     * Only the response changes; the stored path stays.
+     */
+    private function withAbsolutePhotoUrls(iterable $translations): void
+    {
+        foreach ($translations as $t) {
+            $url = $t->markedImageUrl();
+            if ($url !== null) {
+                $t->result_marked = $url;
+            }
+        }
+    }
+
+    /**
      * GET /api/translations
      */
     public function index(Request $request): JsonResponse
@@ -36,6 +53,7 @@ class TranslationController extends Controller
         if ($isPremium) {
             $perPage = min(50, max(10, (int) $request->query('per_page', 20)));
             $items = $query->paginate($perPage);
+            $this->withAbsolutePhotoUrls($items->getCollection());
 
             return response()->json([
                 'data' => $items->items(),
@@ -47,6 +65,7 @@ class TranslationController extends Controller
         }
 
         $items = $query->limit(self::FREE_HISTORY_LIMIT)->get();
+        $this->withAbsolutePhotoUrls($items);
 
         return response()->json([
             'data' => $items,
