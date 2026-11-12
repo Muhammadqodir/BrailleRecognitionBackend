@@ -1,202 +1,146 @@
 @extends('layouts.base')
 
-@php
-    $appStoreUrl = 'https://apps.apple.com/app/id1669110413';
-    $playUrl = 'https://play.google.com/store/apps/details?id=uz.mq.braillerecognition';
-
-    // Braille codes the app reads (kRecognitionLanguages in the Flutter app).
-    $brailleLanguages = [
-        ['English braille, Grade 1 (uncontracted)', 'UEB letter-by-letter braille used in early reading and worksheets.'],
-        ['English braille, Grade 2 (contracted)', 'The contractions used in most English braille books and homework.'],
-        ['Spanish braille', 'Braille en español, including ñ and accented vowels.'],
-        ['French braille', 'Braille français with accented letters.'],
-        ['Portuguese braille', 'Braille em português, for Brazil and Portugal.'],
-        ['German braille', 'Deutsche Brailleschrift with umlauts and ß.'],
-        ['Russian braille', 'Шрифт Брайля for the Cyrillic alphabet.'],
-        ['Arabic braille', 'Read right to left, as Arabic text is written.'],
-        ['Polish braille', 'Alfabet Braille’a with Polish letters.'],
-        ['Greek braille', 'Braille for the Greek alphabet.'],
-        ['Latvian braille', 'Braille with Latvian letters.'],
-        ['Uzbek braille', 'Cyrillic and Latin Uzbek braille.'],
-    ];
-
-    // One list feeds both the visible FAQ and the FAQPage schema, so they never disagree.
-    $faqs = [
-        [
-            'q' => 'How do I translate braille to text with my phone?',
-            'a' => 'Install Braille Recognition, open the camera in the app and take a photo of the braille page. The app finds the dots, reads every cell and shows the page as plain text that you can copy, save or share.',
-        ],
-        [
-            'q' => 'Which braille languages does the app read?',
-            'a' => 'English Grade 1 and Grade 2 (contracted) braille, Spanish, French, Portuguese, German, Russian, Arabic, Polish, Greek, Latvian and Uzbek (Cyrillic and Latin). The app can also pick the language for you.',
-        ],
-        [
-            'q' => 'Who is the braille translator app for?',
-            'a' => 'Anyone who needs to read braille but does not know it: teachers of students with visual impairments (TVIs), special education teachers, parents checking homework written in braille, and volunteers or social workers who support blind people.',
-        ],
-        [
-            'q' => 'Is Braille Recognition free?',
-            'a' => 'The app is free to download and your first scans are free. Unlimited scanning is part of Premium, which you can try with a free trial on iPhone and Android.',
-        ],
-        [
-            'q' => 'Does it read handwritten braille from a slate or a Perkins brailler?',
-            'a' => 'Yes. The recognition model is trained on real photos of embossed paper, including worksheets and homework written on a Perkins brailler or with a slate and stylus.',
-        ],
-        [
-            'q' => 'Can blind or visually impaired people use the app directly?',
-            'a' => 'The app is designed for sighted people who support braille readers, such as teachers and family members. Blind users can benefit through the translations, but the app is not yet optimized for use with a screen reader.',
-        ],
-        [
-            'q' => 'How do I take a photo for the best accuracy?',
-            'a' => 'Lay the page flat and shoot it straight from above, with the whole page in the frame. Let the light fall at an angle from the top of the page so the dots cast small shadows, and keep the photo sharp. Pages embossed on both sides are harder to read, so photograph the side you need with the light coming from the top.',
-        ],
-    ];
-@endphp
-
 @section('head')
-    <style>
-        .lead-proof { color: #5f6b7a; font-size: 15px; margin-top: 16px; }
-        .store-buttons { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; margin-top: 8px; }
-        .store-buttons .button-secondary { text-decoration: none; }
-        .steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
-        .steps li { margin: 24px; }
-        .steps h3 { margin-bottom: 8px; }
-        .lang-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; margin-top: 32px; }
-        .lang-grid li { list-style: none; padding: 20px 24px; }
-        .lang-grid h3 { font-size: 18px; line-height: 1.3; margin: 0 0 6px; }
-        .lang-grid p { margin: 0; color: #5f6b7a; font-size: 15px; }
-        .lang-list { padding: 0; margin: 0; }
-        .use-cases { padding-left: 20px; }
-        .use-cases li { margin-bottom: 8px; }
-        .faq-list { max-width: 760px; margin: 32px auto 0; display: grid; gap: 12px; }
-        .faq-item { padding: 0; }
-        .faq-item summary { list-style: none; cursor: pointer; padding: 20px 56px 20px 24px; position: relative; }
-        .faq-item summary::-webkit-details-marker { display: none; }
-        .faq-item summary::after { content: "+"; position: absolute; right: 24px; top: 50%; transform: translateY(-50%); font-size: 24px; color: #009AD1; }
-        .faq-item[open] summary::after { content: "\2212"; }
-        .faq-item summary h3 { margin: 0; font-size: 18px; line-height: 1.4; font-weight: 600; }
-        .faq-item p { margin: 0; padding: 0 24px 20px; color: #3d4752; }
-        .news-card-fallback { background: linear-gradient(135deg, #007aa6 0%, #009AD1 100%) !important; }
-        @media (max-width: 479px) {
-            .steps li { margin: 16px 8px; }
-        }
-    </style>
+    {{-- Structured data only; nothing visible. The FAQ answers mirror the FAQ section below. --}}
     <script type="application/ld+json">
         {!! json_encode([
             '@context' => 'https://schema.org',
             '@graph' => [
                 [
                     '@type' => 'Organization',
-                    '@id' => url('/') . '/#organization',
+                    '@id' => 'https://braillerecognition.alfocus.uz/#organization',
                     'name' => 'AL-FOCUS TECH LLC',
                     'url' => 'https://alfocus.uz',
-                    'logo' => asset('images/logo_new.png'),
-                    'email' => 'mqodir777@gmail.com',
-                ],
-                [
-                    '@type' => 'WebSite',
-                    '@id' => url('/') . '/#website',
-                    'url' => url('/') . '/',
-                    'name' => 'Braille Recognition',
-                    'publisher' => ['@id' => url('/') . '/#organization'],
+                    'logo' => 'https://braillerecognition.alfocus.uz/images/logo_new.png',
                 ],
                 [
                     '@type' => 'MobileApplication',
-                    'name' => 'Braille Recognition: Braille Translator & Scanner',
-                    'alternateName' => 'Braille Recognition',
+                    'name' => 'Braille Recognition',
                     'operatingSystem' => 'iOS, Android',
                     'applicationCategory' => 'EducationalApplication',
-                    'description' => 'Take a photo of braille and read it as text. Reads English Grade 1 and Grade 2, Spanish, French, Portuguese, German, Russian, Arabic, Polish, Greek, Latvian and Uzbek braille.',
-                    'image' => asset('images/banner_2.png'),
-                    'url' => url('/') . '/',
-                    'downloadUrl' => [$appStoreUrl, $playUrl],
-                    'installUrl' => [$appStoreUrl, $playUrl],
-                    'inLanguage' => ['en', 'de', 'es', 'fr', 'it', 'pl', 'pt', 'ru'],
+                    'description' => 'AI-powered Braille translator app: scan Braille with your phone camera and read it as text.',
+                    'image' => 'https://braillerecognition.alfocus.uz/images/banner_2.png',
+                    'url' => 'https://braillerecognition.alfocus.uz/',
+                    'downloadUrl' => ['https://apps.apple.com/app/id1669110413', 'https://play.google.com/store/apps/details?id=uz.mq.braillerecognition'],
                     'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'USD'],
-                    'publisher' => ['@id' => url('/') . '/#organization'],
+                    'publisher' => ['@id' => 'https://braillerecognition.alfocus.uz/#organization'],
                 ],
                 [
                     '@type' => 'FAQPage',
-                    'mainEntity' => array_map(fn ($f) => [
+                    'mainEntity' => array_map(fn ($qa) => [
                         '@type' => 'Question',
-                        'name' => $f['q'],
-                        'acceptedAnswer' => ['@type' => 'Answer', 'text' => $f['a']],
-                    ], $faqs),
+                        'name' => $qa[0],
+                        'acceptedAnswer' => ['@type' => 'Answer', 'text' => $qa[1]],
+                    ], [
+                        ['What is BrailleRecognition?', 'BrailleRecognition is an AI-powered mobile application that translates Braille text into readable plain text. It is designed to make Braille accessible to those who don’t know it, enabling educators, parents, and caregivers to interact with visually impaired individuals more effectively.'],
+                        ['Who is this app for?', 'This app is perfect for anyone who needs to understand Braille but doesn’t know how to read it, including: educators helping students with assignments or learning materials; parents and caregivers checking homework or understanding Braille notes; volunteers and social workers supporting visually impaired communities.'],
+                        ['Can visually impaired people use the app directly?', 'BrailleRecognition is designed for people who support visually impaired individuals, such as teachers or family members. While it is not optimized for direct use by visually impaired users, they can benefit indirectly through the app’s translations.'],
+                        ['How can I take a picture for maximum accuracy?', 'Please follow these steps for a better translation: the image was clear and contrasty; the light fell obliquely from the top side of the paper; the paper was photographed from top.'],
+                    ]),
                 ],
             ],
-        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) !!}
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}
     </script>
 @endsection
 
 @section('content')
-    <main>
     <section class="section hero-section">
         <div class="container">
-            <div class="hero-wrapper">
-                <img src="/images/logo_new.png" width="102" height="102" alt="Braille Recognition app icon" class="hero-logo">
-                <h1>Braille translator: turn a photo of braille into text</h1>
-                <p class="hero-description" style="max-width: 640px;">
-                    Point your phone's camera at a braille page and read it as plain text in seconds.
-                    Braille Recognition helps teachers, parents and caregivers read homework, worksheets,
-                    books and labels written in braille, in 11 languages including contracted English Grade 2.
+            <div data-w-id="653d6031-aa80-5f0c-561b-f7d572d05b1e" class="hero-wrapper"
+                style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                <img src="./images/logo_new.png" loading="lazy" width="102" alt="" class="hero-logo">
+                <h1>AI-powered Braille Translator app!</h1>
+                <p class="hero-description" style="max-width: 600px;">
+                    BrailleRecognition is designed to help educators, parents, and
+                    caregivers easily translate Braille into readable text. Using your phone's camera, the app
+                    quickly scans and converts Braille from books, notes, or labels into plain text.
                 </p>
-                <div class="store-buttons">
-                    <a href="{{ $appStoreUrl }}" target="_blank" rel="noopener" class="button-primary w-inline-block"
-                        style="text-decoration: none; color: #fff;">
-                        <img src="/res/65bf84149cd3b97eab44ce8c_arrow-down-circle.svg" alt="" class="button-arrow">
-                        <div>Download on the App Store</div>
-                    </a>
-                    <a href="{{ $playUrl }}" target="_blank" rel="noopener" class="button-secondary w-inline-block">
-                        <img src="/res/65bf8414ab3fd8f47c85e800_arrow-down-circle-1.svg" alt="" class="button-arrow">
-                        <div>Get it on Google Play</div>
-                    </a>
-                </div>
-                <p class="lead-proof">More than 55,000 downloads · used by teachers and families worldwide</p>
+                <a href="https://onelink.to/vjyqau" style="text-decoration: none; color: #fff;" target="_blank"
+                    class="button-primary w-inline-block">
+                    <img src="./res/65bf84149cd3b97eab44ce8c_arrow-down-circle.svg" loading="lazy" alt=""
+                        class="button-arrow"
+                        style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d;">
+                    <div>Install Now</div>
+                </a>
             </div>
         </div>
     </section>
+    <!-- <section class="section">
+                <div class="container-large">
+                    <div class="gallery-wrapper">
+                        <img src="./images/result.png" loading="lazy"
+                            sizes="(max-width: 479px) 87vw, (max-width: 767px) 320px, (max-width: 991px) 28vw, 27vw" alt=""
+                            id="w-node-_2e9c6c52-e74b-a270-87de-e97ceba37aed-8e01a7e0"
+                            style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                        <img src="./images/main.png" loading="lazy"
+                            sizes="(max-width: 479px) 87vw, (max-width: 767px) 320px, (max-width: 991px) 32vw, 31vw" alt=""
+                            id="w-node-a6cc5305-9daf-8f6d-8819-a57e73ee4cf9-8e01a7e0"
+                            style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                        <img src="./images/trants.png" loading="lazy"
+                            sizes="(max-width: 479px) 87vw, (max-width: 767px) 320px, (max-width: 991px) 28vw, 27vw" alt=""
+                            id="w-node-_70428380-a9ac-b15f-2fef-8e3638baa98a-8e01a7e0"
+                            style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                    </div>
+                </div>
+            </section> -->
 
-    <section class="section overview-section" id="how-it-works">
+    <section class="section overview-section">
         <div class="container">
             <div class="overview-wrapper" style="grid-row-gap: 20px;">
-                <div class="overview-top">
-                    <h2>How to translate braille to text</h2>
-                    <p>No braille knowledge needed. Four steps, about a minute.</p>
+                <div class="overview-top"
+                    style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                    <h2>How it works!</h2>
                 </div>
                 <div>
-                    <div class="custom-card">
+                    <div class="custom-card"
+                        style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); opacity: 1; transform-style: preserve-3d;">
                         <div class="row" style="padding: 24px; align-items: center;">
                             <div class="col-md-8">
-                                <ol class="steps">
-                                    <li>
-                                        <h3 class="heading-medium">1. Take a photo of the braille page</h3>
-                                        <p>Open the app and photograph the page from above. You can also pick a photo
-                                            from your gallery.</p>
-                                    </li>
-                                    <li>
-                                        <h3 class="heading-medium">2. The AI reads the dots</h3>
-                                        <p>A recognition model trained on thousands of real phone photos finds every
-                                            braille cell, even on worn or handwritten pages.</p>
-                                    </li>
-                                    <li>
-                                        <h3 class="heading-medium">3. Read the text</h3>
-                                        <p>The braille is converted into plain text. Each cell is marked on the photo so
-                                            you can see which letter came from where.</p>
-                                    </li>
-                                    <li>
-                                        <h3 class="heading-medium">4. Save or share</h3>
-                                        <p>Every scan is kept in your history. Copy the text or share it by email,
-                                            messaging apps or cloud storage.</p>
-                                    </li>
-                                </ol>
+                                <div style="margin: 24px;">
+                                    <div class="heading-medium">1. Take a picture</div>
+                                    <p>
+                                        Open the BrailleRecognition app and use your phone's camera to capture an
+                                        image
+                                        of
+                                        the Braille text.
+                                    </p>
+                                </div>
+                                <div style="margin: 24px;">
+                                    <div class="heading-medium">2. AI Processing</div>
+                                    <p>
+                                        The app's advanced AI technology analyzes the image and accurately
+                                        recognizes
+                                        the
+                                        Braille characters.
+                                    </p>
+                                </div>
+                                <div style="margin: 24px;">
+                                    <div class="heading-medium">3. Text Conversion</div>
+                                    <p>
+                                        Braille is instantly converted into plain text, displayed on your screen for
+                                        easy
+                                        reading.
+                                    </p>
+                                </div>
+                                <div style="margin: 24px;">
+                                    <div class="heading-medium">4. Save or Share</div>
+                                    <p>
+                                        Save the translated text for future use or share it directly with others via
+                                        email,
+                                        messaging apps, or cloud storage.
+                                    </p>
+                                </div>
                             </div>
                             <div class="col-md-4" style="padding: 24px;">
                                 <div class="device" data-device="iPhoneX" data-orientation="portrait" data-color="black">
                                     <div class="screen bg-black" style="box-shadow: 0px 5px 50px gray;">
-                                        <video muted autoplay loop playsinline preload="metadata"
-                                            aria-label="Demo: the app scans a braille page and shows the text"
+                                        <!-- PUT CONTENTS HERE:-->
+                                        <!-- * * This can be a video, image, or just about anything else.-->
+                                        <!-- * * Set the max width of your media to 100% and the height to-->
+                                        <!-- * * 100% like the demo example below.-->
+                                        <video muted="muted" autoplay="" loop=""
                                             style="max-width: 100%; height: 100%">
-                                            <source src="/video/video_demo.mp4" type="video/mp4" />
+                                            <source src="video/video_demo.mp4" type="video/mp4" />
                                         </video>
                                     </div>
                                 </div>
@@ -205,29 +149,36 @@
                     </div>
                     <div class="row">
                         <div class="col-md-4" style="margin-top: 32px;">
-                            <div class="custom-card" style="padding: 24px;">
-                                <img src="/images/ai.png" height="30" loading="lazy" alt="">
-                                <h3 class="heading-medium">AI braille recognition</h3>
+                            <div class="custom-card"
+                                style="padding: 24px; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                                <img src="./images/ai.png" height="30" loading="lazy" alt="">
+                                <div class="heading-medium">AI Recognition</div>
                                 <p class="overview-description">
-                                    No need to type braille cells by hand. Scan the page and the app reads it for you.
+                                    No need to type Braille characters manually—just scan and let the app do the
+                                    work!
                                 </p>
                             </div>
                         </div>
                         <div class="col-md-4" style="margin-top: 32px;">
-                            <div class="custom-card" style="padding: 24px;">
-                                <img src="/images/quick.png" height="30" loading="lazy" alt="">
-                                <h3 class="heading-medium">Fast, on your phone</h3>
+                            <div class="custom-card"
+                                style="padding: 24px; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                                <img src="./images/quick.png" height="30" loading="lazy" alt="">
+                                <div class="heading-medium">Fast and Accurate</div>
                                 <p class="overview-description">
-                                    Recognition runs on the phone itself, so a page comes back in seconds.
+                                    Converts Braille into text instantly using cutting-edge AI technology.
                                 </p>
                             </div>
                         </div>
                         <div class="col-md-4" style="margin-top: 32px;">
-                            <div class="custom-card" style="padding: 24px;">
-                                <img src="/images/sofa.png" height="30" loading="lazy" alt="">
-                                <h3 class="heading-medium">Made for sighted helpers</h3>
+                            <div class="custom-card"
+                                style="padding: 24px; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                                <img src="./images/sofa.png" height="30" loading="lazy" alt="">
+                                <div class="heading-medium">User-Friendly</div>
                                 <p class="overview-description">
-                                    A simple app for people who don't read braille: teachers, parents and caregivers.
+                                    Designed for non-experts in Braille with a simple, intuitive interface that
+                                    anyone
+                                    can
+                                    use.
                                 </p>
                             </div>
                         </div>
@@ -236,159 +187,317 @@
             </div>
         </div>
     </section>
-
-    <section class="section" id="languages">
-        <div class="container">
-            <div class="overview-top" style="text-align: center;">
-                <h2>Braille languages the app reads</h2>
-                <p>Choose the braille code yourself, or let the app detect it from the page.</p>
-            </div>
-            <ul class="lang-grid lang-list">
-                @foreach ($brailleLanguages as [$name, $note])
-                    <li class="custom-card">
-                        <h3>{{ $name }}</h3>
-                        <p>{{ $note }}</p>
-                    </li>
-                @endforeach
-            </ul>
-        </div>
-    </section>
-
-    <section class="section" id="who-its-for">
-        <div class="container">
-            <div class="custom-card" style="padding: 32px;">
-                <div class="row">
-                    <div class="col-md-6">
-                        <h2>Who uses Braille Recognition</h2>
-                        <p>Most people who scan with the app are teachers and parents of children who read and write
-                            in braille.</p>
-                    </div>
-                    <div class="col-md-6">
-                        <ul class="use-cases">
-                            <li><strong>Teachers of the visually impaired (TVIs)</strong> marking braille homework and
-                                tests faster.</li>
-                            <li><strong>Classroom and special education teachers</strong> reading what a blind student
-                                wrote.</li>
-                            <li><strong>Parents</strong> checking homework written on a Perkins brailler or slate.</li>
-                            <li><strong>Volunteers and social workers</strong> reading letters, notes and labels in
-                                braille.</li>
-                        </ul>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <section class="section">
         <div class="container">
             <div class="clients-wrapper">
-                <div class="overview-top">
-                    <h2>Supported by</h2>
-                    <p>Grants, accelerators and partners behind Braille Recognition</p>
+
+                <div class="overview-top"
+                    style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                    <h2>Trusted by Leaders in Innovation</h2>
+                    <p>Backed by Industry Leaders and Innovators</p>
                 </div>
                 <div class="clients-list">
-                    <a href="https://yandex.cloud/" target="_blank" rel="noopener">
-                        <img src="/images/yandex.png" loading="lazy" alt="Yandex Cloud" class="clients-logo">
+                    <a href="https://yandex.cloud/" target="_blank">
+                        <img src="images/yandex.png" loading="lazy" class="clients-logo" alt="Yandex"
+                            style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
                     </a>
-                    <a href="https://astanahub.com/" target="_blank" rel="noopener">
-                        <img src="/images/astana_hub.png" loading="lazy" alt="Astana Hub" class="clients-logo"
-                            style="height: 40px;">
+                    <a href="https://astanahub.com/" target="_blank">
+                        <img src="images/astana_hub.png" alt="Astana Hub" loading="lazy"
+                            class="clients-logo"
+                            style="height: 40px; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
                     </a>
-                    <a href="https://it-park.uz/" target="_blank" rel="noopener">
-                        <img src="/images/it_park.png" loading="lazy" alt="IT Park Uzbekistan" class="clients-logo"
-                            style="height: 40px;">
+                    <a href="https://it-park.uz/" target="_blank">
+                        <img src="images/it_park.png" alt="IT Park" loading="lazy" class="clients-logo"
+                            style="height: 40px;transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
                     </a>
-                    <a href="https://www.hse.ru/en/" target="_blank" rel="noopener">
-                        <img src="/images/hse.png" loading="lazy" alt="HSE University" class="clients-logo"
-                            style="height: 40px;">
+                    <a href="https://www.hse.ru/en/" target="_blank">
+                        <img src="images/hse.png" alt="HSE University" loading="lazy"
+                            class="clients-logo"
+                            style="height: 40px;transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
                     </a>
-                    <a href="https://verdi.uz/" target="_blank" rel="noopener">
-                        <img src="/res/verdi.png" loading="lazy" alt="VERDI MEBEL" class="clients-logo"
-                            style="height: 40px;">
+                    <a href="https://verdi.uz/" target="_blank">
+                        <img src="res/verdi.png" alt="VERDI MEBEL" loading="lazy" class="clients-logo"
+                            style="height: 40px;transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
                     </a>
                 </div>
             </div>
         </div>
     </section>
-
+    <!-- <section class="section features-white">
+                <div class="container">
+                    <div class="features-wrapper">
+                        <div class="features-image-wrapper"><img
+                                src="./res/65bf902077a6b18b99a0ee3c_iPhone 14 &amp; 15 Pro - 4.webp" loading="lazy"
+                                width="330" sizes="(max-width: 479px) 87vw, 330px" alt=""
+                                srcset="https://assets-global.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf902077a6b18b99a0ee3c_iPhone%2014%20%26%2015%20Pro%20-%204-p-500.webp 500w, https://assets-global.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf902077a6b18b99a0ee3c_iPhone%2014%20%26%2015%20Pro%20-%204.webp 660w"
+                                class="features-image"
+                                style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                        </div>
+                        <div class="features-content"
+                            style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                            <img src="./res/65bf9119bc19eafdb0cbbc90_Icon.png" loading="lazy" width="50" alt="">
+                            <h2>AI Recommendations</h2>
+                            <p class="features-description">Implement an intelligent recommendation system powered by AI to
+                                analyze user
+                                preferences and create personalized playlists tailored to individual tastes.</p>
+                            <p class="features-description">Introduce users to new music they're likely to love.</p><a
+                                href="https://webflow.partnerlinks.io/asad-digital-templates?slug=thrive-app-website-template"
+                                target="_blank" class="button-primary w-inline-block"><img
+                                    src="./res/65bf84149cd3b97eab44ce8c_arrow-down-circle.svg" loading="lazy" alt=""
+                                    class="button-arrow"
+                                    style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d;">
+                                <div>Download Now</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="section features-gray">
+                <div class="container">
+                    <div class="features-wrapper reverse">
+                        <div class="features-image-wrapper"><img
+                                src="./res/65bf90209f9a45d45ecd15c3_iPhone 14 &amp; 15 Pro - 5.webp" loading="lazy"
+                                width="330" sizes="(max-width: 479px) 87vw, 330px" alt=""
+                                srcset="https://assets-global.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf90209f9a45d45ecd15c3_iPhone%2014%20%26%2015%20Pro%20-%205-p-500.webp 500w, https://assets-global.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf90209f9a45d45ecd15c3_iPhone%2014%20%26%2015%20Pro%20-%205.webp 660w"
+                                class="features-image"
+                                style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                        </div>
+                        <div class="features-content"
+                            style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                            <img src="./res/65bf91199c1a33194f1428ff_Icon-2.png" loading="lazy" width="50" alt="">
+                            <h2>Interactive Lyrics</h2>
+                            <p class="features-description">Enhance the listening experience by integrating synchronized
+                                lyrics with
+                                songs, creating an engaging karaoke-style feature.</p>
+                            <p class="features-description">Additionally, provide behind-the-scenes content, exclusive
+                                interviews, and
+                                artist insights to offer users a deeper connection with the music and the creators behind
+                                it.</p><a
+                                href="https://webflow.partnerlinks.io/asad-digital-templates?slug=thrive-app-website-template"
+                                target="_blank" class="button-primary w-inline-block"><img
+                                    src="./res/65bf84149cd3b97eab44ce8c_arrow-down-circle.svg" loading="lazy" alt=""
+                                    class="button-arrow"
+                                    style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d;">
+                                <div>Download Now</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="section features-white">
+                <div class="container">
+                    <div class="features-wrapper">
+                        <div class="features-image-wrapper"><img
+                                src="./res/65bf90204866a88f0830194b_iPhone 14 &amp; 15 Pro - 6.webp" loading="lazy"
+                                width="330" sizes="(max-width: 479px) 87vw, 330px" alt=""
+                                srcset="https://assets-global.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf90204866a88f0830194b_iPhone%2014%20%26%2015%20Pro%20-%206-p-500.webp 500w, https://assets-global.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf90204866a88f0830194b_iPhone%2014%20%26%2015%20Pro%20-%206.webp 660w"
+                                class="features-image"
+                                style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                        </div>
+                        <div class="features-content"
+                            style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                            <img src="./res/65bf911968c8f36db591ca1c_Icon-1.png" loading="lazy" width="50" alt="">
+                            <h2>Live Concert Streaming</h2>
+                            <p class="features-description">Provide users with the unique experience of streaming live
+                                concerts,
+                                allowing them to virtually attend performances of their favorite artists.</p>
+                            <p class="features-description">Or let your users discover new ones, creating a real-time and
+                                immersive
+                                connection with the music scene.</p><a
+                                href="https://webflow.partnerlinks.io/asad-digital-templates?slug=thrive-app-website-template"
+                                target="_blank" class="button-primary w-inline-block"><img
+                                    src="./res/65bf84149cd3b97eab44ce8c_arrow-down-circle.svg" loading="lazy" alt=""
+                                    class="button-arrow"
+                                    style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d;">
+                                <div>Download Now</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </section> -->
     <section class="section">
         <div class="container">
             <div class="overview-wrapper">
-                <div class="overview-top">
-                    <h2>In the news</h2>
-                    <p>Awards and stories about Braille Recognition.</p>
+                <div class="overview-top"
+                    style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                    <h2>Blog</h2>
+                    <p>
+                        Explore insights, stories, and updates about BrailleRecognition.
+                    </p>
                 </div>
                 <div class="benefits-grid">
-                    <a style="text-decoration: none;" target="_blank" rel="noopener" href="https://awards.gov.uz/news/22/show">
-                        <article class="benefits-card news-card-fallback" style="height: 300px; width: 100%;">
-                            <h3 class="heading-medium">Finalist of the President Tech Award</h3>
-                            <time class="benefits-caption" datetime="2024-10-04">4 October 2024</time>
-                        </article>
+                    <a style="text-decoration: none;" target="_blank" href="https://awards.gov.uz/news/22/show">
+                        <div class="benefits-card"
+                            style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(./images/president.jpeg); background-size: cover; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                            <h3 class="heading-medium">
+                                We are in the final of the President Tech Awards
+                            </h3>
+                            <p class="benefits-description">
+                            </p>
+                            <div class="benefits-caption">4 October 2024</div>
+                        </div>
                     </a>
-                    <a style="text-decoration: none;" target="_blank" rel="noopener"
+
+                    <!-- <a style="text-decoration: none;" target="_blank"
+                                href="https://alfocus.uz/post/prezident-lichno-upomyanul-nas-na-selektore-neveroyatno-vdohnovlyayuschiy-moment-dlya-vsey-nashey-komandy">
+                                <div class="benefits-card"
+                                    style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(https://alfocus.uz/uploads/Prezident_licno_upomyanul_nas_na_selektore!_Neveroyatno_vdohnovlyayushtiy_moment_dlya_vsey_nasey_komandi_cover.png); background-size: cover; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                                    <h3 class="heading-medium">
+                                        We Were Personally Mentioned by the President! 🌟
+                                    </h3>
+                                    <p class="benefits-description">
+                                    </p>
+                                    <div class="benefits-caption">20 December 2023</div>
+                                </div>
+                            </a> -->
+
+                    <a style="text-decoration: none;" target="_blank"
                         href="https://astanahub.com/ru/article/astana-hub-battle-bitva-tekhnologicheskikh-startapov-vpervye-sostoialas-v-almaty">
-                        <article class="benefits-card"
-                            style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(https://alfocus.uz/uploads/Astana_Hub_Battle:_bitva_tehnologiceskih_startapov_vpervie_sostoyalasy_v_Almati_cover.png); background-size: cover;">
-                            <h3 class="heading-medium">We won a 6 million tenge grant from Yandex</h3>
-                            <time class="benefits-caption" datetime="2023-02-03">3 February 2023</time>
-                        </article>
+                        <div class="benefits-card"
+                            style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(https://alfocus.uz/uploads/Astana_Hub_Battle:_bitva_tehnologiceskih_startapov_vpervie_sostoyalasy_v_Almati_cover.png); background-size: cover; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                            <h3 class="heading-medium">
+                                We won a grant from Yandex for 6 million tenge! 🚀
+                            </h3>
+                            <p class="benefits-description">
+                            </p>
+                            <div class="benefits-caption">3 Февраль 2023</div>
+                        </div>
                     </a>
-                    <a style="text-decoration: none;" target="_blank" rel="noopener"
+
+                    <a style="text-decoration: none;" target="_blank"
                         href="https://alfocus.uz/post/nash-proekt-braille-recognition-byl-vybran-v-final-prestizhnoy-premii-mgovawards">
-                        <article class="benefits-card"
-                            style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(https://it-park.uz/storage/images/news/normal/5dtooBZTKzIa3a6rwpbPhB9ln2sRHUUpaajpGpqP.png); background-size: cover;">
-                            <h3 class="heading-medium">mGovAward finalist</h3>
-                            <time class="benefits-caption" datetime="2022-05-20">20 May 2022</time>
-                        </article>
+                        <div class="benefits-card"
+                            style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(https://it-park.uz/storage/images/news/normal/5dtooBZTKzIa3a6rwpbPhB9ln2sRHUUpaajpGpqP.png); background-size: cover; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                            <h3 class="heading-medium">
+                                mGovAward finalists determined
+                            </h3>
+                            <p class="benefits-description">
+                            </p>
+                            <div class="benefits-caption">20 May 2022</div>
+                        </div>
                     </a>
-                    <a style="text-decoration: none;" target="_blank" rel="noopener" href="https://fest.hse.ru/top50">
-                        <article class="benefits-card"
-                            style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(https://optim.tildacdn.com/tild6138-3165-4332-a530-663165613138/-/format/webp/-50.jpg); background-size: cover;">
-                            <h3 class="heading-medium">HSE Fest 2021 finalist</h3>
-                            <time class="benefits-caption" datetime="2021-03-10">10 March 2021</time>
-                        </article>
+
+                    <a style="text-decoration: none;" target="_blank" href="https://fest.hse.ru/top50">
+                        <div class="benefits-card"
+                            style="height: 300px; width: 100%; background: linear-gradient(to bottom, rgb(0 0 0 / 82%) 0%, rgb(0 0 0 / 0%) 100%), url(https://optim.tildacdn.com/tild6138-3165-4332-a530-663165613138/-/format/webp/-50.jpg); background-size: cover; transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                            <h3 class="heading-medium">
+                                We are in the final of HSE Fest 2021
+                            </h3>
+                            <p class="benefits-description">
+                            </p>
+                            <div class="benefits-caption">10 March 2021</div>
+                        </div>
                     </a>
                 </div>
             </div>
+            <!-- <div style="margin-top: 24px;">
+                        <a href="" target="_blank" class="button-secondary w-inline-block"
+                            style="width: 150px; margin: auto; justify-content: center; text-decoration: none;">
+                            <img src="./res/65bf8414ab3fd8f47c85e800_arrow-down-circle-1.svg" loading="lazy" alt=""
+                                class="button-arrow"
+                                style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d;">
+                            <div>More</div>
+                        </a>
+                    </div> -->
         </div>
     </section>
-
-    <section class="section" id="faq">
+    <section class="section">
         <div class="container">
             <div class="hero-wrapper">
-                <h2>Frequently asked questions</h2>
-                <p class="hero-description">Everything you need to know about translating braille with your phone.</p>
+                <h1>FAQ</h1>
+                <p class="hero-description">
+                    Everything you need to know about BrailleRecognition—quick and easy.
+                </p>
             </div>
-            <div class="faq-list">
-                @foreach ($faqs as $i => $faq)
-                    <details class="faq-item custom-card" @if ($i === 0) open @endif>
-                        <summary><h3>{{ $faq['q'] }}</h3></summary>
-                        <p>{{ $faq['a'] }}</p>
-                    </details>
-                @endforeach
-            </div>
-        </div>
-    </section>
+            <div class="help-wrapper" style="margin-top: 32px;">
+                <div data-w-id="e6792d95-7cee-fd33-fbf1-3dafe1196b6d" class="help-card">
+                    <div class="help-trigger">
+                        <div class="heading-small">What is BrailleRecognition?</div><img
+                            src="https://cdn.prod.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf9edc7360c2afeeb525ef_plus.svg"
+                            loading="lazy" alt="" class="help-icon" />
+                    </div>
+                    <div class="help-content">
+                        <p class="help-text">
+                            BrailleRecognition is an AI-powered mobile application that translates Braille text into
+                            readable plain text. It is designed to make Braille accessible to those who don’t know
+                            it, enabling educators, parents, and caregivers to interact with visually impaired
+                            individuals more effectively.
+                        </p>
+                    </div>
+                </div>
+                <div class="help-card">
+                    <div class="help-trigger">
+                        <div class="heading-small">Who is this app for?</div><img
+                            src="https://cdn.prod.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf9edc7360c2afeeb525ef_plus.svg"
+                            loading="lazy" alt="" class="help-icon" />
+                    </div>
+                    <div class="help-content">
+                        <p class="help-text">
+                            This app is perfect for anyone who needs to understand Braille but doesn’t know how to
+                            read it, including:
+                        <ul>
+                            <li>
+                                Educators helping students with assignments or learning materials.
+                            </li>
+                            <li>
+                                Parents and caregivers checking homework or understanding Braille notes.
+                            </li>
+                            <li>
+                                Volunteers and social workers supporting visually impaired communities.
+                            </li>
+                        </ul>
 
-    <section class="section cta-section">
-        <div class="container">
-            <div class="cta-wrapper">
-                <img src="/images/logo_new.png" loading="lazy" width="102" height="102" alt="" class="hero-logo">
-                <h2>Read braille with your phone today</h2>
-                <p class="hero-description">Braille Recognition is available for iPhone, iPad and Android.</p>
-                <div class="store-buttons">
-                    <a href="{{ $appStoreUrl }}" target="_blank" rel="noopener" class="button-primary w-inline-block"
-                        style="text-decoration: none; color: #fff;">
-                        <img src="/res/65bf84149cd3b97eab44ce8c_arrow-down-circle.svg" alt="" class="button-arrow">
-                        <div>App Store</div>
-                    </a>
-                    <a href="{{ $playUrl }}" target="_blank" rel="noopener" class="button-secondary w-inline-block">
-                        <img src="/res/65bf8414ab3fd8f47c85e800_arrow-down-circle-1.svg" alt="" class="button-arrow">
-                        <div>Google Play</div>
-                    </a>
+                        </p>
+                    </div>
+                </div>
+                <div class="help-card">
+                    <div class="help-trigger">
+                        <div class="heading-small">Can visually impaired people use the app directly?</div><img
+                            src="https://cdn.prod.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf9edc7360c2afeeb525ef_plus.svg"
+                            loading="lazy" alt="" class="help-icon" />
+                    </div>
+                    <div class="help-content">
+                        <p class="help-text">
+                            BrailleRecognition is designed for people who support visually impaired individuals,
+                            such as teachers or family members. While it is not optimized for direct use by visually
+                            impaired users, they can benefit indirectly through the app’s translations.
+                        </p>
+                    </div>
+                </div>
+                <div class="help-card">
+                    <div class="help-trigger">
+                        <div class="heading-small">How can I take a picture for maximum accuracy?</div><img
+                            src="https://cdn.prod.website-files.com/65bf7d3d6bb1c09b8e01a7d0/65bf9edc7360c2afeeb525ef_plus.svg"
+                            loading="lazy" alt="" class="help-icon" />
+                    </div>
+                    <div class="help-content">
+                        <p class="help-text">
+                            Please follow these steps for a better translation:<br>✔️ The image was clear and
+                            contrasty<br>✔️ The light fell obliquely from the top side of the paper<br>✔️ The paper
+                            was photographed from top
+                        </p>
+                    </div>
                 </div>
             </div>
         </div>
     </section>
-    </main>
+    <section class="section cta-section">
+        <div class="container">
+            <div class="cta-wrapper"
+                style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d; opacity: 1;">
+                <img src="./images/logo_new.png" loading="lazy" width="102" alt="" class="hero-logo">
+                <h1>Braille Recognition</h1>
+                <p class="hero-description">
+                    Braille Recognition - translate braille with phone camera!
+                </p>
+                <a href="https://onelink.to/vjyqau" style="text-decoration: none; color: #fff;" target="_blank"
+                    class="button-primary w-inline-block">
+                    <img src="./res/65bf84149cd3b97eab44ce8c_arrow-down-circle.svg" loading="lazy" alt=""
+                        class="button-arrow"
+                        style="transform: translate3d(0px, 0px, 0px) scale3d(1, 1, 1) rotateX(0deg) rotateY(0deg) rotateZ(0deg) skew(0deg, 0deg); transform-style: preserve-3d;">
+                    <div>Install Now</div>
+                </a>
+            </div>
+        </div>
+    </section>
 @endsection
