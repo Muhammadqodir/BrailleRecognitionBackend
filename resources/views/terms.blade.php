@@ -1,5 +1,8 @@
 @extends('layouts.base')
 
+@section('title', 'Terms of Use | Braille Recognition')
+@section('description', 'Terms of use for the Braille Recognition braille translator app.')
+
 @section('head')
     <style>
         body {

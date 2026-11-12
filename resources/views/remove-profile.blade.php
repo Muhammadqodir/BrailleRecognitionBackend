@@ -1,5 +1,9 @@
 @extends('layouts.base')
 
+@section('title', 'Delete your account | Braille Recognition')
+@section('description', 'Request deletion of your Braille Recognition account and data.')
+@section('robots', 'noindex, follow')
+
 @section('head')
     <style>
         body {

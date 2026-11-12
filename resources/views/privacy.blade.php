@@ -1,5 +1,8 @@
 @extends('layouts.base')
 
+@section('title', 'Privacy Policy | Braille Recognition')
+@section('description', 'How the Braille Recognition app collects, uses and protects your data.')
+
 @section('head')
     <style>
         body {
