@@ -90,6 +90,7 @@ const SKIP_LABELS: Record<string, string> = {
     unreadable: 'Photo unreadable',
     rotated: 'Turned or upside down',
     duplicate: 'Duplicate',
+    check_later: 'Check later',
     other: 'Other',
 };
 

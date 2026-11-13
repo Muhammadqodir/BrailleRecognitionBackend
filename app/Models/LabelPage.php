@@ -20,7 +20,7 @@ class LabelPage extends Model
      */
     public const TAGS = ['two_sided', 'side_light', 'recheck'];
 
-    public const SKIP_REASONS = ['not_braille', 'unreadable', 'rotated', 'duplicate', 'other'];
+    public const SKIP_REASONS = ['not_braille', 'unreadable', 'rotated', 'duplicate', 'check_later', 'other'];
 
     /** Clockwise turns of the photo the labeler can choose. */
     public const ROTATIONS = [0, 90, 180, 270];
