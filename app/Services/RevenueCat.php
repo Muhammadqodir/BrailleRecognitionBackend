@@ -96,6 +96,15 @@ class RevenueCat
         $productId = $entitlement['product_identifier'] ?? '';
         $purchase = $subscriber['subscriptions'][$productId] ?? [];
 
+        // The Lifetime plan is a one-time purchase. RevenueCat files those
+        // under non_subscriptions, one entry per purchase, not under
+        // subscriptions, so read the latest one for the store and receipt.
+        $oneTime = $subscriber['non_subscriptions'][$productId] ?? null;
+        $isOneTime = $purchase === [] && is_array($oneTime) && $oneTime !== [];
+        if ($isOneTime) {
+            $purchase = end($oneTime) ?: [];
+        }
+
         $expiresAt = $this->toUtc($entitlement['expires_date'] ?? null);
         $unsubscribed = $this->toUtc($purchase['unsubscribe_detected_at'] ?? null);
         $billingIssue = $this->toUtc($purchase['billing_issues_detected_at'] ?? null);
@@ -115,7 +124,8 @@ class RevenueCat
             'product_id' => $productId ?: null,
             'store' => $purchase['store'] ?? null,
             'period_type' => $purchase['period_type'] ?? null,
-            'will_renew' => $isActive && $unsubscribed === null && $billingIssue === null,
+            // Nothing renews after a one-time purchase.
+            'will_renew' => !$isOneTime && $isActive && $unsubscribed === null && $billingIssue === null,
             'environment' => !empty($purchase['is_sandbox']) ? 'SANDBOX' : 'PRODUCTION',
             // The subscriber object carries the real identifier as
             // store_transaction_id; original_purchase_date is a timestamp and
