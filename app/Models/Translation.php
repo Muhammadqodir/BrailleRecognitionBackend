@@ -23,6 +23,7 @@ class Translation extends Model
         return [
             'is_fav' => 'boolean',
             'rating' => 'integer',
+            'hidden_at' => 'datetime',
         ];
     }
 

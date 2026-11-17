@@ -104,6 +104,7 @@ class User extends Authenticatable
      * Counted from history rather than a counter, so it cannot drift: every
      * scan that found braille is filed there, by the app or by the OCR host.
      * Empty results are the scans that found nothing, and do not count.
+     * Scans the person removed from history (hidden_at) still count.
      */
     public function freeScansLeft(): int
     {

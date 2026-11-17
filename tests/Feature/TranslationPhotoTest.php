@@ -34,8 +34,10 @@ class TranslationPhotoTest extends TestCase
         $this->assertSame(Storage::disk('public')->url($t->input_file), $t->result_marked);
         $this->assertSame('{"engine":"device","cells":[]}', $t->result_json);
 
+        // Removing it from history only hides it; the photo stays for
+        // labeling until the account itself is deleted.
         $this->actingAs($user, 'sanctum')->deleteJson("/api/translations/{$t->id}")->assertOk();
-        Storage::disk('public')->assertMissing($t->input_file);
+        Storage::disk('public')->assertExists($t->input_file);
     }
 
     public function test_scan_can_be_reread_in_another_language(): void

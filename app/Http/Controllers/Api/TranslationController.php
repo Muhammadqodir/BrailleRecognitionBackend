@@ -47,7 +47,7 @@ class TranslationController extends Controller
         $user = $request->user();
         $isPremium = $user->isPremium();
 
-        $query = $user->translations()->latest('created_at');
+        $query = $user->translations()->whereNull('hidden_at')->latest('created_at');
         $total = (clone $query)->count();
 
         if ($isPremium) {
@@ -133,7 +133,7 @@ class TranslationController extends Controller
      */
     public function update(Request $request, Translation $translation): JsonResponse
     {
-        if ($translation->user_id !== $request->user()->id) {
+        if ($translation->user_id !== $request->user()->id || $translation->hidden_at !== null) {
             return response()->json(['message' => 'Not found.'], 404);
         }
 
@@ -172,6 +172,12 @@ class TranslationController extends Controller
 
     /**
      * DELETE /api/translations/{translation}
+     *
+     * Removes the scan from the person's history. The row is only marked
+     * hidden: free scans are counted from history, so a real delete would
+     * give the scan back, and labeling and the admin pages still use it.
+     * Asking again for a scan already removed succeeds, so a retry after a
+     * lost answer is not reported as a failure.
      */
     public function destroy(Request $request, Translation $translation): JsonResponse
     {
@@ -179,7 +185,9 @@ class TranslationController extends Controller
             return response()->json(['message' => 'Not found.'], 404);
         }
 
-        $translation->delete();
+        if ($translation->hidden_at === null) {
+            $translation->forceFill(['hidden_at' => now()])->save();
+        }
 
         return response()->json(['message' => 'Deleted.']);
     }
