@@ -1,6 +1,5 @@
-import { Link } from '@inertiajs/react';
 import type { ColumnDef } from '@tanstack/react-table';
-import { Copy, MoreHorizontal, ScanText } from 'lucide-react';
+import { ArrowUpRight, Copy, MoreHorizontal, ScanText } from 'lucide-react';
 
 import { CountryCell, Empty, formatDate, Pill, PlanBadge, type Plan } from '@/components/badges';
 import { DataTableColumnHeader, type SortDirection } from '@/components/data-table/data-table-column-header';
@@ -77,12 +76,14 @@ export function getUserColumns({ sort, direction, onSort, translationsUrl }: Col
         },
         {
             accessorKey: 'provider',
+            meta: { dropOrder: 2 },
             header: 'Sign-in',
             size: 110,
             cell: ({ row }) => (row.original.provider ? <Pill>{row.original.provider}</Pill> : <Empty />),
         },
         {
             accessorKey: 'country',
+            meta: { dropOrder: 4 },
             header: 'Country',
             size: 140,
             cell: ({ row }) => <CountryCell code={row.original.country} />,
@@ -107,6 +108,7 @@ export function getUserColumns({ sort, direction, onSort, translationsUrl }: Col
         },
         {
             accessorKey: 'platform',
+            meta: { dropOrder: 1 },
             header: 'Platform',
             size: 100,
             cell: ({ row }) => (row.original.platform ? <Pill>{row.original.platform}</Pill> : <Empty />),
@@ -119,6 +121,7 @@ export function getUserColumns({ sort, direction, onSort, translationsUrl }: Col
         },
         {
             accessorKey: 'created_at',
+            meta: { dropOrder: 3 },
             header: header('Joined', 'created_at'),
             size: 120,
             cell: ({ row }) => <span className="tabular-nums text-muted-foreground">{formatDate(row.original.created_at)}</span>,
@@ -137,10 +140,11 @@ export function getUserColumns({ sort, direction, onSort, translationsUrl }: Col
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem asChild>
-                            <Link href={`${translationsUrl}?user_id=${row.original.id}`}>
+                            <a href={`${translationsUrl}?user_id=${row.original.id}`} target="_blank" rel="noopener">
                                 <ScanText />
                                 View translations
-                            </Link>
+                                <ArrowUpRight className="ml-auto opacity-60" />
+                            </a>
                         </DropdownMenuItem>
                         {row.original.rc_user_id && (
                             <DropdownMenuItem onSelect={() => navigator.clipboard.writeText(row.original.rc_user_id ?? '')}>

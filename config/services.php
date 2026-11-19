@@ -75,4 +75,23 @@ return [
         'free_scans' => (int) env('FREE_SCANS', 5),
     ],
 
+    /*
+     * Read-only store reports for the admin dashboard's funnel, pulled by
+     * `php artisan store:sync`. The key files live outside git (the repo is
+     * public); leave a path empty and that store is skipped.
+     */
+    'app_store_connect' => [
+        'key_id' => env('ASC_KEY_ID', ''),
+        'issuer_id' => env('ASC_ISSUER_ID', ''),
+        'private_key_path' => env('ASC_PRIVATE_KEY_PATH', ''),
+        'app_id' => env('ASC_APP_ID', '1669110413'),
+    ],
+
+    'google_play' => [
+        'service_account_path' => env('PLAY_SERVICE_ACCOUNT_PATH', ''),
+        // Play Console → Download reports → "Cloud Storage URI", without gs://.
+        'stats_bucket' => env('PLAY_STATS_BUCKET', ''),
+        'package' => env('PLAY_PACKAGE', 'uz.mq.braillerecognition'),
+    ],
+
 ];

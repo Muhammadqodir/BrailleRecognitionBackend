@@ -118,6 +118,7 @@ export function getDatasetColumns({ sort, direction, onSort, tagNames, busy, onT
         },
         {
             accessorKey: 'split',
+            meta: { dropOrder: 4 },
             header: 'Split',
             size: 80,
             cell: ({ row }) => <Pill>{row.original.split === 'test' ? 'Test' : 'Train'}</Pill>,
@@ -163,6 +164,7 @@ export function getDatasetColumns({ sort, direction, onSort, tagNames, busy, onT
         },
         {
             id: 'cells',
+            meta: { dropOrder: 5 },
             header: 'Cells',
             size: 90,
             cell: ({ row }) => (
@@ -173,18 +175,21 @@ export function getDatasetColumns({ sort, direction, onSort, tagNames, busy, onT
         },
         {
             id: 'changes',
+            meta: { dropOrder: 3 },
             header: 'Changes',
             size: 220,
             cell: ({ row }) => <span className="block truncate text-muted-foreground">{changes(row.original)}</span>,
         },
         {
             accessorKey: 'priority',
+            meta: { dropOrder: 1 },
             header: () => <DataTableColumnHeader title="Priority" sortKey="priority" currentSort={sort} currentDirection={direction} onSort={onSort} />,
             size: 100,
             cell: ({ row }) => <span className="tabular-nums text-muted-foreground">{row.original.priority.toFixed(2)}</span>,
         },
         {
             accessorKey: 'seconds',
+            meta: { dropOrder: 2 },
             header: () => <DataTableColumnHeader title="Time" sortKey="seconds" currentSort={sort} currentDirection={direction} onSort={onSort} />,
             size: 90,
             cell: ({ row }) => <span className="tabular-nums text-muted-foreground">{duration(row.original.seconds)}</span>,
@@ -193,11 +198,15 @@ export function getDatasetColumns({ sort, direction, onSort, tagNames, busy, onT
             accessorKey: 'labeled_at',
             header: () => <DataTableColumnHeader title="Labeled" sortKey="labeled_at" currentSort={sort} currentDirection={direction} onSort={onSort} />,
             size: 190,
-            cell: ({ row }) => (
-                <span className="tabular-nums text-muted-foreground">
-                    {row.original.labeled_at ? `${formatDateTime(row.original.labeled_at)}${row.original.labeled_by ? ` · ${row.original.labeled_by}` : ''}` : '—'}
-                </span>
-            ),
+            cell: ({ row }) => {
+                const text = row.original.labeled_at ? `${formatDateTime(row.original.labeled_at)}${row.original.labeled_by ? ` · ${row.original.labeled_by}` : ''}` : '—';
+
+                return (
+                    <span className="block truncate tabular-nums text-muted-foreground" title={text}>
+                        {text}
+                    </span>
+                );
+            },
         },
     ];
 }

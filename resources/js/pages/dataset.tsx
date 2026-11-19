@@ -12,6 +12,7 @@ import { getDatasetColumns, STATUS_LABELS, TAG_LABELS, type DatasetRow } from '@
 import { PagePreviewDialog } from '@/components/dataset/page-preview-dialog';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { useRefreshOnReturn } from '@/hooks/use-refresh-on-return';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
 import { send, SignedOut } from '@/lib/http';
 import type { Paginated, SharedProps } from '@/types';
@@ -37,6 +38,12 @@ interface DatasetProps {
 
 export default function Dataset({ pages, splitCounts, statusCounts, tagCounts, tagNames, filters }: DatasetProps) {
     const { routes } = usePage<SharedProps>().props;
+    // The editor opens in its own tab; coming back shows the page's new status.
+    const refreshOnReturn = useRefreshOnReturn(['pages', 'statusCounts', 'tagCounts']);
+    const openEditor = (id: number) => {
+        refreshOnReturn();
+        window.open(`${routes.labeling}?page=${id}`, '_blank', 'noopener');
+    };
     const [rows, setRows] = useState(pages.data);
     const [busy, setBusy] = useState<Set<string>>(new Set());
     const [error, setError] = useState<string | null>(null);
@@ -177,9 +184,9 @@ export default function Dataset({ pages, splitCounts, statusCounts, tagCounts, t
                 pagination={pages}
                 onPerPageChange={(perPage) => navigate({ per_page: perPage })}
                 emptyMessage="No pages match these filters."
-                onRowClick={(row) => router.visit(`${routes.labeling}?page=${row.id}`)}
+                onRowClick={(row) => openEditor(row.id)}
             />
-            <PagePreviewDialog row={preview} pageUrl={pageUrl} onClose={() => setPreview(null)} onEdit={(row) => router.visit(`${routes.labeling}?page=${row.id}`)} />
+            <PagePreviewDialog row={preview} pageUrl={pageUrl} onClose={() => setPreview(null)} onEdit={(row) => openEditor(row.id)} />
         </DashboardLayout>
     );
 }

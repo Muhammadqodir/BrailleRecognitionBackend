@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\Subscription;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -25,7 +26,7 @@ class AdminPagesTest extends TestCase
     }
 
     /** Like the app, which sends events before it has an account: tied by install, user_id left empty. */
-    private function event(User $user, string $name, array $props = [], string $locale = 'pt-BR'): void
+    private function event(User $user, string $name, array $props = [], string $locale = 'pt-BR', string $platform = 'android', ?Carbon $at = null): void
     {
         if ($user->install_id === null) {
             $user->forceFill(['install_id' => 'install-'.$user->id])->save();
@@ -37,10 +38,26 @@ class AdminPagesTest extends TestCase
             'user_id' => null,
             'name' => $name,
             'props' => json_encode($props),
-            'platform' => 'android',
+            'platform' => $platform,
             'locale' => $locale,
-            'created_at' => now(),
-            'updated_at' => now(),
+            'created_at' => $at ?? now(),
+            'updated_at' => $at ?? now(),
+        ]);
+    }
+
+    /** A RevenueCat webhook event as we store it. */
+    private function storeEvent(string $type, string $store, array $payload, Carbon $at, string $environment = 'PRODUCTION'): void
+    {
+        DB::table('subscription_events')->insert([
+            'event_id' => (string) Str::uuid(),
+            'rc_user_id' => $payload['original_app_user_id'],
+            'type' => $type,
+            'product_id' => 'braille_premium_monthly',
+            'store' => $store,
+            'environment' => $environment,
+            'payload' => json_encode(['type' => $type, 'store' => $store, 'environment' => $environment, ...$payload]),
+            'created_at' => $at,
+            'updated_at' => $at,
         ]);
     }
 
@@ -59,10 +76,15 @@ class AdminPagesTest extends TestCase
         ]);
     }
 
-    public function test_dashboard_reports_users_translations_and_subscribers(): void
+    public function test_dashboard_reports_the_period_against_the_one_before(): void
     {
-        $paying = User::factory()->create(['auth_provider' => 'google', 'last_seen_at' => now()]);
-        $anonymous = User::factory()->create(['auth_provider' => 'anonymous', 'last_seen_at' => now()->subDays(40)]);
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00'));
+
+        $paying = User::factory()->create(['auth_provider' => 'google', 'role' => 'Teacher']);
+        $anonymous = User::factory()->create(['auth_provider' => 'anonymous']);
+        $iphone = User::factory()->create(['role' => 'Teacher']);
+        $nowhere = User::factory()->create(['role' => 'Parent']);
+        $lastMonth = User::factory()->create();
         $this->subscribe($paying, 'normal');
         $this->subscribe($anonymous, 'trial');
         // Neither a sandbox purchase nor an expired one is a paying subscriber.
@@ -73,33 +95,124 @@ class AdminPagesTest extends TestCase
         $paying->translations()->create(['lang' => 'EN', 'result' => '', 'rating' => -1]);
         $anonymous->translations()->create(['lang' => 'DE', 'result' => 'Hallo']);
 
+        // Four new installs in the 30 days (three today), one in the 30 before.
         $this->event($paying, 'app_opened', ['is_first_open' => true]);
         $this->event($paying, 'scan_completed');
-        $this->event($anonymous, 'app_opened', ['is_first_open' => true], 'en');
+        $this->event($anonymous, 'app_opened', ['is_first_open' => true]);
+        $this->event($nowhere, 'app_opened', ['is_first_open' => true], 'en');
+        $this->event($iphone, 'app_opened', ['is_first_open' => true], 'de-DE', 'ios', now()->subDays(5));
+        $this->event($lastMonth, 'app_opened', ['is_first_open' => true], 'pt-BR', 'android', now()->subDays(40));
+
+        // RevenueCat: a trial today, a converted trial, a lifetime buy, a refund
+        // today, a purchase last month, and a sandbox one that must not count.
+        $this->storeEvent('INITIAL_PURCHASE', 'PLAY_STORE', ['original_app_user_id' => 'rc-a', 'period_type' => 'TRIAL', 'price' => 0, 'country_code' => 'BR'], now());
+        $this->storeEvent('RENEWAL', 'APP_STORE', ['original_app_user_id' => 'rc-b', 'period_type' => 'NORMAL', 'price' => 29.99, 'is_trial_conversion' => true, 'takehome_percentage' => 0.7, 'country_code' => 'US'], now()->subDays(3));
+        $this->storeEvent('NON_RENEWING_PURCHASE', 'APP_STORE', ['original_app_user_id' => 'rc-c', 'price' => 49.99, 'takehome_percentage' => 0.85, 'country_code' => 'DE'], now()->subDays(2));
+        $this->storeEvent('CANCELLATION', 'APP_STORE', ['original_app_user_id' => 'rc-b', 'price' => -29.99, 'takehome_percentage' => 0.7, 'cancel_reason' => 'CUSTOMER_SUPPORT'], now());
+        $this->storeEvent('INITIAL_PURCHASE', 'PLAY_STORE', ['original_app_user_id' => 'rc-d', 'period_type' => 'NORMAL', 'price' => 4.99, 'country_code' => 'BR'], now()->subDays(40));
+        $this->storeEvent('INITIAL_PURCHASE', 'APP_STORE', ['original_app_user_id' => 'rc-e', 'period_type' => 'NORMAL', 'price' => 4.99], now(), 'SANDBOX');
+
+        // The App Store has reported up to two days ago; Google Play not at all.
+        foreach (['2026-11-16', '2026-11-17'] as $day) {
+            foreach (['impressions' => 100, 'page_views' => 40, 'downloads' => 10] as $metric => $value) {
+                DB::table('store_stats')->insert(['source' => 'asc:test', 'date' => $day, 'platform' => 'ios', 'metric' => $metric, 'country' => 'US', 'value' => $value, 'updated_at' => now()]);
+            }
+        }
 
         $this->actingAs($this->admin, 'admin')->get(route('admin.dashboard'))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('dashboard')
-                ->where('kpis.totalUsers.value', 4)
-                ->where('kpis.activeToday.value', 1)
-                ->where('kpis.paidSubscribers.value', 1)
-                ->where('kpis.trials.value', 1)
-                ->where('kpis.translationsThisWeek.value', 3)
-                ->where('kpis.readRate.value', 66.7)
-                ->where('kpis.thumbsUp.value', 1)
-                ->where('kpis.thumbsDown.value', 1)
-                ->where('installsByCountry.countries.0.code', 'BR')
-                ->where('installsByCountry.unplacedInstalls', 1)
-                ->where('funnel.cohort', 2)
-                ->where('funnel.steps.2.count', 1)
-                ->where('topLanguages.0.lang', 'EN')
-                ->where('topLanguages.0.emptyRate', 50)
-                ->has('userGrowth', 30)
-                ->has('translationsDaily', 14)
-                ->where('translationsDaily.13.device', 1)
-                ->where('translationsDaily.13.server', 2)
+                ->where('period.key', '30d')
+                ->where('period.from', '2026-10-21')
+                ->where('period.previousFrom', '2026-09-21')
+                ->where('period.previousTo', '2026-10-20')
+                // active
+                ->where('kpis.0.value', 4)->where('kpis.0.previous', 1)->where('kpis.0.today', 3)
+                ->has('kpis.0.series', 30)
+                // new users
+                ->where('kpis.1.value', 4)->where('kpis.1.previous', 1)->where('kpis.1.today', 3)
+                // paid: the converted trial and the lifetime buy, once each
+                ->where('kpis.2.key', 'paid')
+                ->where('kpis.2.value', 2)->where('kpis.2.previous', 1)->where('kpis.2.today', 0)
+                ->where('kpis.2.now', 1)
+                // trials
+                ->where('kpis.3.value', 1)->where('kpis.3.today', 1)->where('kpis.3.now', 1)
+                // translations
+                ->where('kpis.4.value', 3)->where('kpis.4.previous', 0)->where('kpis.4.today', 3)
+                // earnings: 29.99 + 49.99 - 29.99 refunded; after the store's cut 42.49
+                ->where('kpis.5.key', 'earnings')
+                ->where('kpis.5.value', 49.99)->where('kpis.5.previous', 4.99)->where('kpis.5.today', -29.99)
+                ->where('kpis.5.proceeds', 42.49)
+                ->has('growth', 30)
+                ->where('growth.29', ['date' => '2026-11-19', 'installsIos' => 0, 'installsAndroid' => 3, 'trialsIos' => 0, 'trialsAndroid' => 1])
+                ->where('growth.24.installsIos', 1)
+                ->where('translationVolume.total', 3)
+                ->where('translationVolume.found', 2)
+                ->where('translationVolume.points.29', ['date' => '2026-11-19', 'found' => 2, 'empty' => 1])
+                ->where('countries.rows.0', ['code' => 'BR', 'installs' => 2, 'ios' => 0, 'android' => 2, 'previous' => 1, 'trials' => 1])
+                ->where('countries.rows.1.code', 'DE')
+                ->where('countries.unplaced', 1)
+                ->where('countries.total', 4)
+                ->where('newUsersBy.platform', [['key' => 'ios', 'count' => 1, 'previous' => 0], ['key' => 'android', 'count' => 3, 'previous' => 1]])
+                ->where('newUsersBy.role', [['key' => 'Teacher', 'count' => 2], ['key' => 'Parent', 'count' => 1], ['key' => null, 'count' => 1]])
+                ->where('newUsersBy.language.0', ['key' => 'pt', 'count' => 2])
+                // iOS stops on the store's last day; Android has no store data yet
+                ->where('funnel.platforms.0.platform', 'ios')
+                ->where('funnel.platforms.0.to', '2026-11-17')
+                ->where('funnel.platforms.0.steps', [
+                    ['key' => 'impressions', 'count' => 200],
+                    ['key' => 'page_views', 'count' => 80],
+                    ['key' => 'downloads', 'count' => 20],
+                    ['key' => 'first_opens', 'count' => 1],
+                    ['key' => 'trials', 'count' => 0],
+                    ['key' => 'paid', 'count' => 2],
+                ])
+                ->where('funnel.platforms.1.hasStoreData', false)
+                ->where('funnel.platforms.1.to', '2026-11-19')
+                ->where('funnel.platforms.1.steps.1.count', null)
+                ->where('funnel.platforms.1.steps.3.count', 3)
+                ->where('funnel.platforms.1.steps.4.count', 1)
+                ->where('brailleLanguages.0.lang', 'EN')
+                ->has('subscriptionEvents', 6)
             );
+    }
+
+    public function test_dashboard_period_can_be_a_preset_or_custom_dates(): void
+    {
+        $this->travelTo(Carbon::parse('2026-11-19 12:00:00'));
+        $this->actingAs($this->admin, 'admin');
+
+        $this->get(route('admin.dashboard', ['range' => '7d']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('period.key', '7d')
+                ->where('period.from', '2026-11-13')
+                ->where('period.previousTo', '2026-11-12')
+                ->has('growth', 7)
+            );
+
+        // Reversed dates are swapped and a range past today stops today.
+        $this->get(route('admin.dashboard', ['from' => '2026-12-31', 'to' => '2026-11-01']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('period.key', 'custom')
+                ->where('period.from', '2026-11-01')
+                ->where('period.to', '2026-11-19')
+                ->where('period.days', 19)
+                ->where('period.previousFrom', '2026-10-13')
+                ->where('period.includesToday', true)
+            );
+
+        // A year is charted by week: the first bucket starts on the period's
+        // first day, the rest on Mondays.
+        $this->get(route('admin.dashboard', ['range' => '12m']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('period.bucket', 'week')
+                ->where('growth.0.date', '2025-11-20')
+                ->where('growth.1.date', '2025-11-24')
+            );
+
+        $this->get(route('admin.dashboard', ['range' => 'nonsense']))
+            ->assertInertia(fn (Assert $page) => $page->where('period.key', '30d'));
     }
 
     public function test_users_can_be_filtered_by_plan_role_and_search(): void

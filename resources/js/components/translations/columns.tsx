@@ -40,11 +40,13 @@ interface ColumnsOptions {
     onSort: (key: string, direction: SortDirection) => void;
     onUserClick: (userId: number) => void;
     tuneUrl: (translationId: number) => string;
+    /** Tune opens the labeling page in a new tab. */
+    onTuneOpened?: () => void;
 }
 
 export const TUNE_HINT = 'Correct the cells on the labeling page; saving adds the scan to the dataset';
 
-export function getTranslationColumns({ sort, direction, onSort, onUserClick, tuneUrl }: ColumnsOptions): ColumnDef<TranslationRow>[] {
+export function getTranslationColumns({ sort, direction, onSort, onUserClick, tuneUrl, onTuneOpened }: ColumnsOptions): ColumnDef<TranslationRow>[] {
     return [
         {
             id: 'select',
@@ -89,18 +91,21 @@ export function getTranslationColumns({ sort, direction, onSort, onUserClick, tu
         },
         {
             accessorKey: 'engine',
+            meta: { dropOrder: 1 },
             header: 'Read by',
             size: 110,
             cell: ({ row }) => <span className="text-muted-foreground">{ENGINE_LABELS[row.original.engine]}</span>,
         },
         {
             accessorKey: 'rating',
+            meta: { dropOrder: 2 },
             header: 'Rating',
             size: 80,
             cell: ({ row }) => <RatingMark rating={row.original.rating} />,
         },
         {
             id: 'user',
+            meta: { dropOrder: 3 },
             header: 'User',
             size: 200,
             cell: ({ row }) =>
@@ -125,7 +130,7 @@ export function getTranslationColumns({ sort, direction, onSort, onUserClick, tu
                 <div className="flex items-center justify-end gap-0.5">
                     {row.original.can_tune && (
                         <Button variant="ghost" size="icon-sm" asChild>
-                            <a href={tuneUrl(row.original.id)} title={`Tune. ${TUNE_HINT}`} aria-label="Tune">
+                            <a href={tuneUrl(row.original.id)} target="_blank" rel="noopener" onClick={onTuneOpened} title={`Tune. ${TUNE_HINT}. Opens in a new tab.`} aria-label="Tune (opens in a new tab)">
                                 <SlidersHorizontal />
                             </a>
                         </Button>

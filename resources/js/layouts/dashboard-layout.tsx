@@ -16,9 +16,11 @@ interface DashboardLayoutProps {
     toolbar?: ReactNode;
     /** Drops the top gap above the content so it sits flush under the header/toolbar (e.g. a full-bleed table). */
     flush?: boolean;
+    /** Extra classes for the toolbar row, e.g. to let it wrap on narrow screens. */
+    toolbarClassName?: string;
 }
 
-export function DashboardLayout({ title, description, actions, toolbar, flush, children }: PropsWithChildren<DashboardLayoutProps>) {
+export function DashboardLayout({ title, description, actions, toolbar, flush, toolbarClassName, children }: PropsWithChildren<DashboardLayoutProps>) {
     return (
         <TooltipProvider delayDuration={0}>
             <SidebarProvider>
@@ -35,7 +37,7 @@ export function DashboardLayout({ title, description, actions, toolbar, flush, c
                             {actions}
                             <AppearanceToggle />
                         </div>
-                        {toolbar && <div className="flex h-11 items-center gap-2 px-4 sm:px-6">{toolbar}</div>}
+                        {toolbar && <div className={cn('flex min-h-11 items-center gap-2 px-4 sm:px-6', toolbarClassName)}>{toolbar}</div>}
                     </header>
                     <div
                         className={cn(

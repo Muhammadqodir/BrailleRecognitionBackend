@@ -47,7 +47,7 @@ export function FilterBar<TData>({ table, total, isFiltered, onReset, csv, child
                 </button>
             )}
             <div className="h-5 w-px shrink-0 bg-border" />
-            <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">{children}</div>
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 py-1.5">{children}</div>
             <div className="ml-auto flex shrink-0 items-center gap-2">
                 {csv && selectedRows.length > 0 && (
                     <Button

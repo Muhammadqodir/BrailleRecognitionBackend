@@ -7,105 +7,390 @@ use App\Models\Subscription;
 use App\Models\Translation;
 use App\Models\User;
 use App\Support\Country;
+use App\Support\Period;
+use App\Support\Purchases;
 use App\Support\Sql;
-use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
+/**
+ * The admin overview. Every number is for the period picked at the top
+ * (`?range=30d`, or `?from=…&to=…`) and is compared with the same number of
+ * days right before it.
+ *
+ * "New users" are installs opened for the first time: the app sends
+ * `app_opened` with is_first_open once per install. Events reach accounts
+ * through the install ID only — analytics_events.user_id stays empty.
+ */
 class DashboardController extends Controller
 {
-    /**
-     * The funnel, in the order a new install meets it. Each step counts the
-     * installs from the cohort that ever sent that event, so a step can be
-     * reached without the one before it (a user can skip onboarding).
-     */
-    private const FUNNEL = [
-        'app_opened' => 'Opened the app',
-        'onboarding_completed' => 'Finished onboarding',
-        'scan_completed' => 'Read a photo',
-        'paywall_viewed' => 'Saw the paywall',
-        'purchase_started' => 'Started a purchase',
-        'trial_started' => 'Started a trial',
-    ];
+    private const PLATFORMS = ['ios', 'android'];
 
-    public function index(): Response
+    public function index(Request $request): Response
     {
+        $period = Period::fromRequest($request);
+        $previous = $period->previous();
+        $purchases = Purchases::between($previous->from, $period->to);
+
         return Inertia::render('dashboard', [
-            'kpis' => $this->kpis(),
-            'userGrowth' => $this->dailySeries(User::query(), 'created_at', 30),
-            'activeInstalls' => $this->dailySeries(
-                DB::table('analytics_events'),
-                'created_at',
-                30,
-                'COUNT(DISTINCT install_id)',
-            ),
-            'platforms' => $this->platformBreakdown(),
-            'installsByCountry' => $this->installsByCountry(),
-            'translationsDaily' => $this->translationsDaily(),
-            'topLanguages' => $this->topLanguages(),
-            'funnel' => $this->funnel(),
+            'period' => $period->toArray(),
+            'kpis' => $this->kpis($period, $previous, $purchases),
+            'growth' => $this->growth($period, $purchases),
+            'translationVolume' => $this->translationVolume($period),
+            'countries' => $this->countries($period, $previous, $purchases),
+            'newUsersBy' => $this->newUsersBy($period, $previous),
+            'funnel' => $this->funnel($period, $purchases),
+            'brailleLanguages' => $this->brailleLanguages($period),
             'subscriptionEvents' => $this->recentSubscriptionEvents(),
             'recentUsers' => $this->recentUsers(),
         ]);
     }
 
-    /** @return array<string, array{value: int|float|null, delta: float|null}> */
-    private function kpis(): array
+    /**
+     * The six headline numbers, each with the previous period, today and a
+     * series for the sparkline.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function kpis(Period $period, Period $previous, Collection $purchases): array
     {
-        $now = now();
-        $weekAgo = $now->copy()->subDays(7);
-        $twoWeeksAgo = $now->copy()->subDays(14);
+        $today = Period::preset('today');
+        $buckets = $period->buckets();
+        $now = $this->premiumCounts();
 
-        $newThisWeek = User::where('created_at', '>=', $weekAgo)->count();
-        $newPrevWeek = User::whereBetween('created_at', [$twoWeeksAgo, $weekAgo])->count();
+        // Distinct installs per day; a week's point is the average day.
+        $activeDaily = $this->perDay($this->events($period), 'COUNT(DISTINCT install_id)');
+        $installsDaily = $this->perDay($this->firstOpens($period), 'COUNT(DISTINCT install_id)');
+        $translationsDaily = $this->perDay(DB::table('translations')->whereBetween('created_at', $period->range()), 'COUNT(*)');
 
-        $activeThisWeek = User::where('last_seen_at', '>=', $weekAgo)->count();
-        $activePrevWeek = User::whereBetween('last_seen_at', [$twoWeeksAgo, $weekAgo])->count();
+        $inPeriod = Purchases::in($purchases, $period);
+        $inPrevious = Purchases::in($purchases, $previous);
+        $inToday = Purchases::in($purchases, $today);
 
-        $translationsThisWeek = Translation::where('created_at', '>=', $weekAgo)->count();
-        $translationsPrevWeek = Translation::whereBetween('created_at', [$twoWeeksAgo, $weekAgo])->count();
+        $purchaseSeries = function (callable $value) use ($inPeriod, $period, $buckets) {
+            $byBucket = $inPeriod->groupBy(fn (array $row) => $period->bucketOf($row['date']));
 
-        $readRate = $this->readRate(Translation::where('created_at', '>=', $weekAgo));
-        $prevReadRate = $this->readRate(Translation::whereBetween('created_at', [$twoWeeksAgo, $weekAgo]));
+            return array_map(fn (string $bucket) => round((float) $value($byBucket->get($bucket, collect())), 2), $buckets);
+        };
 
-        $premium = $this->premiumCounts();
-
-        $rated = Translation::where('created_at', '>=', $now->copy()->subDays(30))->whereNotNull('rating');
+        $revenue = fn (Collection $rows) => round((float) $rows->sum('revenue'), 2);
+        $trials = fn (Collection $rows) => $rows->where('trial', true)->count();
 
         return [
-            'totalUsers' => ['value' => User::count(), 'delta' => null],
-            'signedInUsers' => ['value' => User::where('auth_provider', '<>', 'anonymous')->count(), 'delta' => null],
-            'activeToday' => ['value' => User::where('last_seen_at', '>=', $now->copy()->startOfDay())->count(), 'delta' => null],
-            'activeThisWeek' => ['value' => $activeThisWeek, 'delta' => $this->percentChange($activeThisWeek, $activePrevWeek)],
-            'newThisWeek' => ['value' => $newThisWeek, 'delta' => $this->percentChange($newThisWeek, $newPrevWeek)],
-            'translationsThisWeek' => ['value' => $translationsThisWeek, 'delta' => $this->percentChange($translationsThisWeek, $translationsPrevWeek)],
-            'totalTranslations' => ['value' => Translation::count(), 'delta' => null],
-            'paidSubscribers' => ['value' => $premium['paid'], 'delta' => null],
-            'trials' => ['value' => $premium['trial'], 'delta' => null],
-            'readRate' => [
-                'value' => $readRate,
-                'delta' => $readRate !== null && $prevReadRate !== null ? round($readRate - $prevReadRate, 1) : null,
+            [
+                'key' => 'active',
+                'value' => $this->events($period)->distinct()->count('install_id'),
+                'previous' => $this->events($previous)->distinct()->count('install_id'),
+                'today' => $this->events($today)->distinct()->count('install_id'),
+                'series' => $this->bucketed($activeDaily, $period, 'avg'),
             ],
-            'thumbsUp' => ['value' => (clone $rated)->where('rating', '>', 0)->count(), 'delta' => null],
-            'thumbsDown' => ['value' => (clone $rated)->where('rating', '<', 0)->count(), 'delta' => null],
+            [
+                'key' => 'newUsers',
+                'value' => $this->firstOpens($period)->distinct()->count('install_id'),
+                'previous' => $this->firstOpens($previous)->distinct()->count('install_id'),
+                'today' => $this->firstOpens($today)->distinct()->count('install_id'),
+                'series' => $this->bucketed($installsDaily, $period),
+            ],
+            [
+                'key' => 'paid',
+                'value' => Purchases::newPayers($inPeriod),
+                'previous' => Purchases::newPayers($inPrevious),
+                'today' => Purchases::newPayers($inToday),
+                'series' => $purchaseSeries(fn (Collection $rows) => Purchases::newPayers($rows)),
+                'now' => $now['paid'],
+            ],
+            [
+                'key' => 'trials',
+                'value' => $trials($inPeriod),
+                'previous' => $trials($inPrevious),
+                'today' => $trials($inToday),
+                'series' => $purchaseSeries($trials),
+                'now' => $now['trial'],
+            ],
+            [
+                'key' => 'translations',
+                'value' => array_sum($translationsDaily),
+                'previous' => DB::table('translations')->whereBetween('created_at', $previous->range())->count(),
+                'today' => DB::table('translations')->whereBetween('created_at', $today->range())->count(),
+                'series' => $this->bucketed($translationsDaily, $period),
+            ],
+            [
+                'key' => 'earnings',
+                'value' => $revenue($inPeriod),
+                'previous' => $revenue($inPrevious),
+                'today' => $revenue($inToday),
+                'series' => $purchaseSeries($revenue),
+                'proceeds' => round((float) $inPeriod->sum('proceeds'), 2),
+            ],
         ];
     }
 
-    /** Share of translations that found text, in percent; null when there were none. */
-    private function readRate(EloquentBuilder $query): ?float
+    /**
+     * New installs and trial starts per chart bucket, split by platform.
+     *
+     * @return list<array{date: string, installsIos: int, installsAndroid: int, trialsIos: int, trialsAndroid: int}>
+     */
+    private function growth(Period $period, Collection $purchases): array
     {
-        $total = (clone $query)->count();
+        $installs = $this->firstOpens($period)
+            ->selectRaw('DATE(created_at) as day, platform, COUNT(DISTINCT install_id) as count')
+            ->groupBy('day', 'platform')
+            ->get();
 
-        if ($total === 0) {
+        $points = [];
+        foreach ($period->buckets() as $bucket) {
+            $points[$bucket] = ['date' => $bucket, 'installsIos' => 0, 'installsAndroid' => 0, 'trialsIos' => 0, 'trialsAndroid' => 0];
+        }
+
+        foreach ($installs as $row) {
+            $key = $row->platform === 'ios' ? 'installsIos' : 'installsAndroid';
+            $points[$period->bucketOf((string) $row->day)][$key] += (int) $row->count;
+        }
+
+        foreach (Purchases::in($purchases, $period)->where('trial', true) as $row) {
+            $points[$period->bucketOf($row['date'])][$row['platform'] === 'ios' ? 'trialsIos' : 'trialsAndroid']++;
+        }
+
+        return array_values($points);
+    }
+
+    /** @return array{points: list<array{date: string, found: int, empty: int}>, total: int, found: int} */
+    private function translationVolume(Period $period): array
+    {
+        $rows = DB::table('translations')
+            ->whereBetween('created_at', $period->range())
+            ->selectRaw('DATE(created_at) as day, COUNT(*) as total, SUM(CASE WHEN '.Sql::emptyResult().' THEN 1 ELSE 0 END) as empty_count')
+            ->groupBy('day')
+            ->get();
+
+        $points = [];
+        foreach ($period->buckets() as $bucket) {
+            $points[$bucket] = ['date' => $bucket, 'found' => 0, 'empty' => 0];
+        }
+
+        foreach ($rows as $row) {
+            $bucket = $period->bucketOf((string) $row->day);
+            $points[$bucket]['empty'] += (int) $row->empty_count;
+            $points[$bucket]['found'] += (int) $row->total - (int) $row->empty_count;
+        }
+
+        $points = array_values($points);
+
+        return [
+            'points' => $points,
+            'total' => array_sum(array_map(fn ($p) => $p['found'] + $p['empty'], $points)),
+            'found' => array_sum(array_column($points, 'found')),
+        ];
+    }
+
+    /**
+     * New installs per country (from the region in the device language), with
+     * the platform split, the previous period and the trials started there
+     * (the store's country, from RevenueCat).
+     *
+     * @return array{rows: list<array<string, mixed>>, unplaced: int, total: int}
+     */
+    private function countries(Period $period, Period $previous, Collection $purchases): array
+    {
+        $tally = function (Period $range) {
+            $counts = [];
+            $unplaced = 0;
+
+            $this->firstOpens($range)
+                ->selectRaw('locale, platform, COUNT(DISTINCT install_id) as count')
+                ->groupBy('locale', 'platform')
+                ->get()
+                ->each(function ($row) use (&$counts, &$unplaced) {
+                    $code = Country::fromLocale($row->locale);
+                    if ($code === null) {
+                        $unplaced += (int) $row->count;
+
+                        return;
+                    }
+                    $platform = $row->platform === 'ios' ? 'ios' : 'android';
+                    $counts[$code][$platform] = ($counts[$code][$platform] ?? 0) + (int) $row->count;
+                });
+
+            return [$counts, $unplaced];
+        };
+
+        [$current, $unplaced] = $tally($period);
+        [$before] = $tally($previous);
+        $trials = Purchases::in($purchases, $period)->where('trial', true)->countBy('country');
+
+        $rows = collect($current)
+            ->map(fn (array $split, string $code) => [
+                'code' => $code,
+                'installs' => array_sum($split),
+                'ios' => $split['ios'] ?? 0,
+                'android' => $split['android'] ?? 0,
+                'previous' => array_sum($before[$code] ?? []),
+                'trials' => (int) ($trials[$code] ?? 0),
+            ])
+            ->sortByDesc('installs')
+            ->values()
+            ->all();
+
+        return [
+            'rows' => $rows,
+            'unplaced' => $unplaced,
+            'total' => array_sum(array_column($rows, 'installs')) + $unplaced,
+        ];
+    }
+
+    /**
+     * Who the period's new installs are: platform, the role answered in
+     * onboarding, and the phone's language.
+     *
+     * @return array{platform: list<array{key: string, count: int, previous: int}>, role: list<array{key: string|null, count: int}>, language: list<array{key: string|null, count: int}>}
+     */
+    private function newUsersBy(Period $period, Period $previous): array
+    {
+        $byPlatform = fn (Period $range) => $this->firstOpens($range)
+            ->selectRaw('platform, COUNT(DISTINCT install_id) as count')
+            ->groupBy('platform')
+            ->pluck('count', 'platform');
+
+        $now = $byPlatform($period);
+        $before = $byPlatform($previous);
+
+        $platform = collect(self::PLATFORMS)
+            ->map(fn (string $key) => ['key' => $key, 'count' => (int) ($now[$key] ?? 0), 'previous' => (int) ($before[$key] ?? 0)])
+            ->all();
+
+        $installs = $this->firstOpens($period)->select('install_id');
+
+        $roles = DB::table('users')
+            ->whereIn('install_id', $installs)
+            ->selectRaw('role, COUNT(DISTINCT install_id) as count')
+            ->groupBy('role')
+            ->get();
+        $answered = $roles->whereNotNull('role')->sum('count');
+        $total = $this->firstOpens($period)->distinct()->count('install_id');
+
+        $role = $roles->whereNotNull('role')
+            ->map(fn ($row) => ['key' => (string) $row->role, 'count' => (int) $row->count])
+            ->sortByDesc('count')
+            ->values();
+        if ($total - $answered > 0) {
+            $role->push(['key' => null, 'count' => $total - $answered]);
+        }
+
+        $language = [];
+        $this->firstOpens($period)
+            ->selectRaw('locale, COUNT(DISTINCT install_id) as count')
+            ->groupBy('locale')
+            ->get()
+            ->each(function ($row) use (&$language) {
+                $code = strtolower((string) preg_replace('/[-_].*$/', '', (string) $row->locale)) ?: '';
+                $language[$code] = ($language[$code] ?? 0) + (int) $row->count;
+            });
+        arsort($language);
+
+        return [
+            'platform' => $platform,
+            'role' => $role->all(),
+            'language' => collect($language)->map(fn (int $count, string $code) => ['key' => $code === '' ? null : $code, 'count' => $count])->values()->all(),
+        ];
+    }
+
+    /**
+     * From seeing the app in the store to paying, per platform. Store numbers
+     * arrive days late (Apple ~2, Google ~8–12), so each platform's funnel
+     * ends on the last day its store has reported, and every step is counted
+     * over those same days.
+     *
+     * @return array{platforms: list<array<string, mixed>>, syncedAt: string|null}
+     */
+    private function funnel(Period $period, Collection $purchases): array
+    {
+        $platforms = [];
+
+        foreach (self::PLATFORMS as $platform) {
+            $storeMetrics = $platform === 'ios' ? ['impressions', 'page_views', 'downloads'] : ['page_views', 'downloads'];
+            $last = $this->lastStoreDay($platform, $storeMetrics);
+            $window = $last ? $period->endingBy($last) : null;
+
+            $store = $window
+                ? DB::table('store_stats')
+                    ->where('platform', $platform)
+                    ->whereBetween('date', [$window->from->toDateString(), $window->to->toDateString()])
+                    ->selectRaw('metric, SUM(value) as total')
+                    ->groupBy('metric')
+                    ->pluck('total', 'metric')
+                : collect();
+
+            $range = $window ?? $period;
+            $bought = Purchases::in($purchases, $range)->where('platform', $platform);
+
+            $platforms[] = [
+                'platform' => $platform,
+                'from' => $range->from->toDateString(),
+                'to' => $range->to->toDateString(),
+                'hasStoreData' => $window !== null,
+                'lastStoreDay' => $last,
+                'steps' => [
+                    ['key' => 'impressions', 'count' => $platform === 'ios' && $window ? (int) ($store['impressions'] ?? 0) : null],
+                    ['key' => 'page_views', 'count' => $window ? (int) ($store['page_views'] ?? 0) : null],
+                    ['key' => 'downloads', 'count' => $window ? (int) ($store['downloads'] ?? 0) : null],
+                    ['key' => 'first_opens', 'count' => $this->firstOpens($range)->where('platform', $platform)->distinct()->count('install_id')],
+                    ['key' => 'trials', 'count' => $bought->where('trial', true)->count()],
+                    ['key' => 'paid', 'count' => Purchases::newPayers($bought)],
+                ],
+            ];
+        }
+
+        $synced = DB::table('store_stats')->max('updated_at');
+
+        return [
+            'platforms' => $platforms,
+            'syncedAt' => $synced ? Carbon::parse($synced)->toIso8601String() : null,
+        ];
+    }
+
+    /** The latest day for which the store has reported every one of $metrics. */
+    private function lastStoreDay(string $platform, array $metrics): ?string
+    {
+        $days = DB::table('store_stats')
+            ->where('platform', $platform)
+            ->whereIn('metric', $metrics)
+            ->selectRaw('metric, MAX(date) as last')
+            ->groupBy('metric')
+            ->pluck('last', 'metric');
+
+        if ($days->count() < count($metrics)) {
             return null;
         }
 
-        $read = (clone $query)->whereRaw('NOT '.Sql::emptyResult())->count();
+        return substr((string) $days->min(), 0, 10);
+    }
 
-        return round($read / $total * 100, 1);
+    /** @return list<array{lang: string, count: int, emptyRate: float, up: int, down: int}> */
+    private function brailleLanguages(Period $period): array
+    {
+        return Translation::query()
+            ->whereBetween('created_at', $period->range())
+            ->selectRaw('lang, COUNT(*) as count,
+                SUM(CASE WHEN '.Sql::emptyResult().' THEN 1 ELSE 0 END) as empty_count,
+                SUM(CASE WHEN rating > 0 THEN 1 ELSE 0 END) as up,
+                SUM(CASE WHEN rating < 0 THEN 1 ELSE 0 END) as down')
+            ->groupBy('lang')
+            ->orderByDesc('count')
+            ->limit(8)
+            ->get()
+            ->map(fn ($row) => [
+                'lang' => (string) $row->lang,
+                'count' => (int) $row->count,
+                'emptyRate' => round($row->empty_count / $row->count * 100, 1),
+                'up' => (int) $row->up,
+                'down' => (int) $row->down,
+            ])
+            ->all();
     }
 
     /**
@@ -131,175 +416,50 @@ class DashboardController extends Controller
         return $counts;
     }
 
-    /** Relative change in percent, or null when there is no prior-period baseline to compare against. */
-    private function percentChange(int $current, int $previous): ?float
+    private function events(Period $period): Builder
     {
-        if ($previous === 0) {
-            return null;
+        return DB::table('analytics_events')->whereBetween('created_at', $period->range());
+    }
+
+    /** Installs opened for the first time in the period. */
+    private function firstOpens(Period $period): Builder
+    {
+        return $this->events($period)
+            ->where('name', 'app_opened')
+            ->where('props->is_first_open', true);
+    }
+
+    /** @return array<string, int> Y-m-d => value */
+    private function perDay(Builder $query, string $aggregate): array
+    {
+        return $query
+            ->selectRaw("DATE(created_at) as day, {$aggregate} as count")
+            ->groupBy('day')
+            ->pluck('count', 'day')
+            ->map(fn ($count) => (int) $count)
+            ->all();
+    }
+
+    /**
+     * Daily values folded into the period's chart buckets, missing days as 0.
+     *
+     * @param  array<string, int>  $daily
+     * @return list<float|int>
+     */
+    private function bucketed(array $daily, Period $period, string $fold = 'sum'): array
+    {
+        $buckets = [];
+        foreach ($period->dates() as $date) {
+            $buckets[$period->bucketOf($date)][] = $daily[$date] ?? 0;
         }
 
-        return round(($current - $previous) / $previous * 100, 1);
+        return array_values(array_map(
+            fn (array $values) => $fold === 'avg' ? round(array_sum($values) / count($values), 1) : array_sum($values),
+            $buckets,
+        ));
     }
 
-    /**
-     * Daily count series for the last $days days, gap-filled with 0 so the chart never
-     * has to special-case missing dates.
-     *
-     * @return list<array{date: string, count: int}>
-     */
-    private function dailySeries(EloquentBuilder|Builder $query, string $column, int $days, string $aggregate = 'COUNT(*)'): array
-    {
-        $since = now()->subDays($days - 1)->startOfDay();
-
-        $counts = $query
-            ->where($column, '>=', $since)
-            ->selectRaw("DATE({$column}) as date, {$aggregate} as count")
-            ->groupBy('date')
-            ->pluck('count', 'date');
-
-        return collect(range(0, $days - 1))
-            ->map(function (int $offset) use ($counts, $days) {
-                $date = now()->subDays($days - 1 - $offset)->format('Y-m-d');
-
-                return ['date' => $date, 'count' => (int) ($counts->get($date) ?? 0)];
-            })
-            ->all();
-    }
-
-    /** @return list<array{platform: string, count: int}> */
-    private function platformBreakdown(): array
-    {
-        return DB::table('analytics_events')
-            ->where('created_at', '>=', now()->subDays(30))
-            ->selectRaw("COALESCE(NULLIF(platform, ''), 'unknown') as platform, COUNT(DISTINCT install_id) as count")
-            ->groupBy('platform')
-            ->orderByDesc('count')
-            ->get()
-            ->map(fn ($row) => ['platform' => $row->platform, 'count' => (int) $row->count])
-            ->all();
-    }
-
-    /**
-     * Installs per country, read from the region in the device locale ("pt-BR"
-     * is Brazil). A locale with no region ("en") says nothing about where the
-     * phone is, so those installs are reported apart instead of guessed.
-     *
-     * @return array{countries: list<array{code: string, count: int}>, unplacedInstalls: int}
-     */
-    private function installsByCountry(): array
-    {
-        $counts = [];
-        $unplaced = 0;
-
-        DB::table('analytics_events')
-            ->selectRaw('locale, COUNT(DISTINCT install_id) as count')
-            ->groupBy('locale')
-            ->get()
-            ->each(function ($row) use (&$counts, &$unplaced) {
-                if ($code = Country::fromLocale($row->locale)) {
-                    $counts[$code] = ($counts[$code] ?? 0) + (int) $row->count;
-                } else {
-                    $unplaced += (int) $row->count;
-                }
-            });
-
-        arsort($counts);
-
-        return [
-            'countries' => collect($counts)->map(fn (int $count, string $code) => ['code' => $code, 'count' => $count])->values()->all(),
-            'unplacedInstalls' => $unplaced,
-        ];
-    }
-
-    /** @return list<array{date: string, device: int, server: int, empty: int}> */
-    private function translationsDaily(): array
-    {
-        $days = 14;
-        $since = now()->subDays($days - 1)->startOfDay();
-        $engine = Sql::engine();
-
-        $rows = Translation::query()
-            ->where('created_at', '>=', $since)
-            ->selectRaw("DATE(created_at) as date,
-                SUM(CASE WHEN {$engine} = 'device' THEN 1 ELSE 0 END) as device,
-                SUM(CASE WHEN {$engine} = 'server' THEN 1 ELSE 0 END) as server")
-            ->groupBy('date')
-            ->get()
-            ->keyBy('date');
-
-        return collect(range(0, $days - 1))
-            ->map(function (int $offset) use ($rows, $days) {
-                $date = now()->subDays($days - 1 - $offset)->format('Y-m-d');
-                $row = $rows->get($date);
-
-                return [
-                    'date' => $date,
-                    'device' => (int) ($row->device ?? 0),
-                    'server' => (int) ($row->server ?? 0),
-                ];
-            })
-            ->all();
-    }
-
-    /** @return list<array{lang: string, count: int, emptyRate: float, up: int, down: int}> */
-    private function topLanguages(): array
-    {
-        return Translation::query()
-            ->where('created_at', '>=', now()->subDays(30))
-            ->selectRaw('lang, COUNT(*) as count,
-                SUM(CASE WHEN '.Sql::emptyResult().' THEN 1 ELSE 0 END) as empty_count,
-                SUM(CASE WHEN rating > 0 THEN 1 ELSE 0 END) as up,
-                SUM(CASE WHEN rating < 0 THEN 1 ELSE 0 END) as down')
-            ->groupBy('lang')
-            ->orderByDesc('count')
-            ->limit(8)
-            ->get()
-            ->map(fn ($row) => [
-                'lang' => $row->lang,
-                'count' => (int) $row->count,
-                'emptyRate' => round($row->empty_count / $row->count * 100, 1),
-                'up' => (int) $row->up,
-                'down' => (int) $row->down,
-            ])
-            ->all();
-    }
-
-    /**
-     * New installs from the last 30 days and how far each of them got.
-     *
-     * @return array{cohort: int, steps: list<array{key: string, label: string, count: int}>}
-     */
-    private function funnel(): array
-    {
-        $cohort = DB::table('analytics_events')
-            ->select('install_id')
-            ->where('name', 'app_opened')
-            ->where('props->is_first_open', true)
-            ->where('created_at', '>=', now()->subDays(30));
-
-        $reached = DB::table('analytics_events')
-            ->whereIn('install_id', $cohort)
-            ->whereIn('name', array_keys(self::FUNNEL))
-            ->selectRaw('name, COUNT(DISTINCT install_id) as count')
-            ->groupBy('name')
-            ->pluck('count', 'name');
-
-        $size = (clone $cohort)->distinct()->count('install_id');
-
-        return [
-            'cohort' => $size,
-            'steps' => collect(self::FUNNEL)
-                ->map(fn (string $label, string $key) => [
-                    'key' => $key,
-                    'label' => $label,
-                    'count' => $key === 'app_opened' ? $size : (int) ($reached->get($key) ?? 0),
-                ])
-                ->values()
-                ->all(),
-        ];
-    }
-
-    /** @return list<array{id: int, type: string, productId: string|null, store: string|null, environment: string|null, userId: int|null, createdAt: string}> */
+    /** @return list<array<string, mixed>> */
     private function recentSubscriptionEvents(): array
     {
         return DB::table('subscription_events')
@@ -307,15 +467,22 @@ class DashboardController extends Controller
             ->orderByDesc('id')
             ->limit(6)
             ->get()
-            ->map(fn ($row) => [
-                'id' => (int) $row->id,
-                'type' => $row->type,
-                'productId' => $row->product_id,
-                'store' => $row->store,
-                'environment' => $row->environment,
-                'userId' => $row->user_id !== null ? (int) $row->user_id : null,
-                'createdAt' => Carbon::parse($row->created_at)->toIso8601String(),
-            ])
+            ->map(function ($row) {
+                $event = json_decode((string) $row->payload, true) ?: [];
+
+                return [
+                    'id' => (int) $row->id,
+                    'type' => $row->type,
+                    'periodType' => $event['period_type'] ?? null,
+                    'price' => is_numeric($event['price'] ?? null) ? (float) $event['price'] : null,
+                    'country' => $event['country_code'] ?? null,
+                    'productId' => $row->product_id,
+                    'store' => $row->store,
+                    'environment' => $row->environment,
+                    'userId' => $row->user_id !== null ? (int) $row->user_id : null,
+                    'createdAt' => Carbon::parse($row->created_at)->toIso8601String(),
+                ];
+            })
             ->all();
     }
 

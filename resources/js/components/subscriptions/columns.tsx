@@ -78,6 +78,7 @@ export function getSubscriptionColumns({ sort, direction, onSort }: ColumnsOptio
         },
         {
             accessorKey: 'country',
+            meta: { dropOrder: 4 },
             header: 'Country',
             size: 130,
             cell: ({ row }) => <CountryCell code={row.original.country} />,
@@ -96,6 +97,7 @@ export function getSubscriptionColumns({ sort, direction, onSort }: ColumnsOptio
         },
         {
             accessorKey: 'period_type',
+            meta: { dropOrder: 3 },
             header: 'Period',
             size: 80,
             cell: ({ row }) => (row.original.period_type ? <Pill>{row.original.period_type.toLowerCase()}</Pill> : <Empty />),
@@ -103,9 +105,9 @@ export function getSubscriptionColumns({ sort, direction, onSort }: ColumnsOptio
         {
             accessorKey: 'status',
             header: 'Status',
-            size: 130,
+            size: 150,
             cell: ({ row }) => (
-                <div className="flex items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1">
                     <Badge variant={row.original.grants_access ? 'default' : 'outline'}>{row.original.status.replace('_', ' ')}</Badge>
                     {row.original.environment !== 'PRODUCTION' && <Pill>{row.original.environment.toLowerCase()}</Pill>}
                 </div>
@@ -113,12 +115,14 @@ export function getSubscriptionColumns({ sort, direction, onSort }: ColumnsOptio
         },
         {
             accessorKey: 'will_renew',
+            meta: { dropOrder: 1 },
             header: 'Renews',
             size: 70,
             cell: ({ row }) => <span className="text-muted-foreground">{row.original.will_renew ? 'Yes' : 'No'}</span>,
         },
         {
             accessorKey: 'purchased_at',
+            meta: { dropOrder: 2 },
             header: header('Purchased', 'purchased_at'),
             size: 100,
             cell: ({ row }) => <span className="tabular-nums text-muted-foreground">{formatDate(row.original.purchased_at)}</span>,

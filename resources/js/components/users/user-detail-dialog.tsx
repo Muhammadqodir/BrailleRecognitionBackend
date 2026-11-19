@@ -1,5 +1,3 @@
-import { Link } from '@inertiajs/react';
-
 import { CountryCell, formatDate, formatDateTime, Pill, PlanBadge, RatingMark, type Plan } from '@/components/badges';
 import { DetailField, DetailSection, DetailStat } from '@/components/data-table/detail-fields';
 import { useEntityDetail } from '@/components/data-table/use-entity-detail';
@@ -7,7 +5,9 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
+import { NewTabLink } from '@/components/new-tab-link';
 import { displayName, initials } from '@/lib/people';
+import { cn } from '@/lib/utils';
 
 interface UserTranslation {
     id: number;
@@ -62,7 +62,7 @@ export function UserDetailDialog({ userId, detailUrl, translationsUrl, onOpenCha
 
     return (
         <Dialog open={userId !== null} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[85vh] w-full max-w-2xl overflow-y-auto sm:max-w-2xl">
+            <DialogContent className={cn('max-h-[90vh] w-full max-w-[calc(100%-2rem)] overflow-x-hidden overflow-y-auto lg:p-6', user && user.translations.length > 0 ? 'sm:max-w-[min(64rem,calc(100%-4rem))]' : 'sm:max-w-2xl')}>
                 {loading || !user ? (
                     <div className="flex flex-col gap-4">
                         <div className="flex items-center gap-3">
@@ -100,57 +100,56 @@ export function UserDetailDialog({ userId, detailUrl, translationsUrl, onOpenCha
                             <DetailStat label="Days since joining" value={user.created_at ? Math.floor((Date.now() - Date.parse(user.created_at)) / 86_400_000) : '—'} />
                         </div>
 
-                        <Separator />
+                        <div className={cn('grid grid-cols-1 gap-6', user.translations.length > 0 && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
+                            <div className="flex min-w-0 flex-col gap-5">
+                                <DetailSection title="Account">
+                                    <DetailField label="Email" value={user.email} className="col-span-2" />
+                                    <DetailField label="Sign-in" value={user.provider} />
+                                    <DetailField label="Role" value={user.role} className="col-span-2" />
+                                    <DetailField label="Use case" value={user.use_case} />
+                                    <DetailField label="RevenueCat ID" value={user.rc_user_id && <span className="font-mono text-xs">{user.rc_user_id}</span>} className="col-span-2 sm:col-span-3" />
+                                    <DetailField label="Legacy ID" value={user.legacy_id} />
+                                </DetailSection>
 
-                        <DetailSection title="Account">
-                            <DetailField label="Email" value={user.email} className="col-span-2" />
-                            <DetailField label="Sign-in" value={user.provider} />
-                            <DetailField label="Role" value={user.role} className="col-span-2" />
-                            <DetailField label="Use case" value={user.use_case} />
-                            <DetailField label="RevenueCat ID" value={user.rc_user_id && <span className="font-mono text-xs">{user.rc_user_id}</span>} className="col-span-2 sm:col-span-3" />
-                            <DetailField label="Legacy ID" value={user.legacy_id} />
-                        </DetailSection>
-
-                        <Separator />
-
-                        <DetailSection title="Subscription">
-                            {user.subscription ? (
-                                <>
-                                    <DetailField label="Product" value={user.subscription.product_id} className="col-span-2" />
-                                    <DetailField label="Store" value={user.subscription.store} />
-                                    <DetailField label="Status" value={user.subscription.status} />
-                                    <DetailField label="Period" value={user.subscription.period_type} />
-                                    <DetailField label="Renews" value={user.subscription.will_renew ? 'Yes' : 'No'} />
-                                    <DetailField label="Purchased" value={formatDate(user.subscription.purchased_at)} />
-                                    <DetailField label="Expires" value={formatDate(user.subscription.expires_at)} />
-                                    <DetailField label="Environment" value={user.subscription.environment} />
-                                </>
-                            ) : (
-                                <DetailField label="Status" value="Never subscribed" />
-                            )}
-                        </DetailSection>
-
-                        <Separator />
-
-                        <DetailSection title="Activity">
-                            <DetailField label="Last seen" value={formatDateTime(user.last_seen_at)} />
-                            <DetailField label="Joined" value={formatDate(user.created_at)} />
-                            <DetailField label="App version" value={user.app_version} />
-                            <DetailField label="Country" value={user.country && <CountryCell code={user.country} />} />
-                            <DetailField label="Device language" value={user.locale} />
-                        </DetailSection>
-
-                        {user.translations.length > 0 && (
-                            <>
                                 <Separator />
-                                <div className="flex flex-col gap-3">
-                                    <div className="flex items-center justify-between">
+
+                                <DetailSection title="Subscription">
+                                    {user.subscription ? (
+                                        <>
+                                            <DetailField label="Product" value={user.subscription.product_id} className="col-span-2" />
+                                            <DetailField label="Store" value={user.subscription.store} />
+                                            <DetailField label="Status" value={user.subscription.status} />
+                                            <DetailField label="Period" value={user.subscription.period_type} />
+                                            <DetailField label="Renews" value={user.subscription.will_renew ? 'Yes' : 'No'} />
+                                            <DetailField label="Purchased" value={formatDate(user.subscription.purchased_at)} />
+                                            <DetailField label="Expires" value={formatDate(user.subscription.expires_at)} />
+                                            <DetailField label="Environment" value={user.subscription.environment} />
+                                        </>
+                                    ) : (
+                                        <DetailField label="Status" value="Never subscribed" />
+                                    )}
+                                </DetailSection>
+
+                                <Separator />
+
+                                <DetailSection title="Activity">
+                                    <DetailField label="Last seen" value={formatDateTime(user.last_seen_at)} />
+                                    <DetailField label="Joined" value={formatDate(user.created_at)} />
+                                    <DetailField label="App version" value={user.app_version} />
+                                    <DetailField label="Country" value={user.country && <CountryCell code={user.country} />} />
+                                    <DetailField label="Device language" value={user.locale} />
+                                </DetailSection>
+                            </div>
+
+                            {user.translations.length > 0 && (
+                                <div className="flex min-w-0 flex-col gap-3 lg:border-l lg:pl-6">
+                                    <div className="flex items-center justify-between gap-3">
                                         <h3 className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
                                             Recent translations ({user.translations.length} of {user.translations_count})
                                         </h3>
-                                        <Link href={`${translationsUrl}?user_id=${user.id}`} className="text-xs hover:underline">
+                                        <NewTabLink href={`${translationsUrl}?user_id=${user.id}`} className="shrink-0 text-xs">
                                             View all
-                                        </Link>
+                                        </NewTabLink>
                                     </div>
                                     <div className="flex flex-col gap-2">
                                         {user.translations.map((translation) => (
@@ -170,8 +169,8 @@ export function UserDetailDialog({ userId, detailUrl, translationsUrl, onOpenCha
                                         ))}
                                     </div>
                                 </div>
-                            </>
-                        )}
+                            )}
+                        </div>
                     </>
                 )}
             </DialogContent>

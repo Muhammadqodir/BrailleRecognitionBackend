@@ -18,7 +18,7 @@ function Frame({ label, href, children }: { label: string; href?: string | null;
                     </a>
                 )}
             </figcaption>
-            <div className="flex h-[300px] items-center justify-center overflow-hidden rounded-lg border border-border bg-muted">{children}</div>
+            <div className="flex h-[300px] items-center justify-center overflow-hidden rounded-lg lg:h-[420px] border border-border bg-muted">{children}</div>
         </figure>
     );
 }
@@ -66,7 +66,7 @@ export function MarkedScan({ url, cells, width, height }: { url: string | null; 
                     <img
                         src={url}
                         alt="The scan with the recognised cells marked"
-                        className="block max-h-[298px] max-w-full"
+                        className="block max-h-[298px] max-w-full lg:max-h-[418px]"
                         onError={() => setFailed(true)}
                         onLoad={(event) => setNatural({ w: event.currentTarget.naturalWidth, h: event.currentTarget.naturalHeight })}
                     />

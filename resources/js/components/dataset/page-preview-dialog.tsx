@@ -1,4 +1,4 @@
-import { LoaderCircle, PencilLine } from 'lucide-react';
+import { ArrowUpRight, LoaderCircle, PencilLine } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { dotPosition, turnedSize, turnMatrix } from '@/components/labeling/cells';
@@ -106,6 +106,7 @@ export function PagePreviewDialog({ row, pageUrl, onClose, onEdit }: { row: Data
                         <Button size="sm" onClick={() => onEdit(row)}>
                             <PencilLine />
                             Open in editor
+                            <ArrowUpRight className="opacity-70" />
                         </Button>
                     )}
                 </div>

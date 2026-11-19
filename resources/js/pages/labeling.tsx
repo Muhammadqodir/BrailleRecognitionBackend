@@ -201,6 +201,20 @@ export default function Labeling({ startId, returnUrl, stats: initialStats, skip
     const [stats, setStats] = useState(initialStats);
     /** Opened with Tune and still on that page. */
     const tuning = returnUrl !== null && pageId === startId;
+    // Tune opens this page in a tab of its own (one history entry). There,
+    // finishing closes the tab and the Translations tab behind it refreshes.
+    const [ownTab] = useState(() => window.history.length <= 1);
+    const leaveTuning = useCallback(
+        (force = false) => {
+            if (!returnUrl) return;
+            if (ownTab) {
+                window.close();
+            }
+            // Not closable (or not our own tab): show the list here instead.
+            window.setTimeout(() => (force ? (window.location.href = returnUrl) : router.visit(returnUrl)), 150);
+        },
+        [ownTab, returnUrl],
+    );
     const [cells, setCells] = useState<LabelCell[]>([]);
     /** The cells the page opened with, and the turn they are in. */
     const initialCells = useRef<LabelCell[]>([]);
@@ -763,7 +777,7 @@ export default function Labeling({ startId, returnUrl, stats: initialStats, skip
             setStats(result.stats);
             setNotice(null);
             if (tuning) {
-                router.visit(returnUrl);
+                leaveTuning();
                 return;
             }
             setPageId(result.next_id);
@@ -774,7 +788,7 @@ export default function Labeling({ startId, returnUrl, stats: initialStats, skip
             setSaving(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, cells, ordered, saving, touch, tags, rotation, tuning, returnUrl]);
+    }, [page, cells, ordered, saving, touch, tags, rotation, tuning, leaveTuning]);
 
     const skip = async (reason: string) => {
         if (!page) return;
@@ -785,7 +799,7 @@ export default function Labeling({ startId, returnUrl, stats: initialStats, skip
             setDirty(false);
             setStats(result.stats);
             if (tuning) {
-                router.visit(returnUrl);
+                leaveTuning();
                 return;
             }
             setPageId(result.next_id);
@@ -917,12 +931,24 @@ export default function Labeling({ startId, returnUrl, stats: initialStats, skip
     const actions = (
         <div className="flex items-center gap-1.5">
             {tuning ? (
-                <Button variant="ghost" size="sm" asChild>
-                    <a href={returnUrl} title="Back to the translations list without saving">
-                        <ArrowLeft />
-                        Translations
-                    </a>
-                </Button>
+                ownTab ? (
+                    <Button variant="ghost" size="sm" onClick={() => {
+                            if (dirty && !window.confirm('Close without saving your changes?')) return;
+                            // Asked already: drop the leave-page warning before closing.
+                            setDirty(false);
+                            window.setTimeout(() => leaveTuning(true), 0);
+                        }} title="Close this tab without saving">
+                        <X />
+                        Close
+                    </Button>
+                ) : (
+                    <Button variant="ghost" size="sm" asChild>
+                        <a href={returnUrl} title="Back to the translations list without saving">
+                            <ArrowLeft />
+                            Translations
+                        </a>
+                    </Button>
+                )
             ) : (
                 <Button variant="ghost" size="sm" disabled={!page?.prev_id} onClick={() => page?.prev_id && setPageId(page.prev_id)} title="The page labeled before this one">
                     <ArrowLeft />

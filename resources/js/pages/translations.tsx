@@ -10,6 +10,7 @@ import { TableSearch } from '@/components/data-table/table-search';
 import { useDataTable } from '@/components/data-table/use-data-table';
 import { ENGINE_LABELS, getTranslationColumns, type TranslationRow } from '@/components/translations/columns';
 import { TranslationDetailDialog } from '@/components/translations/translation-detail-dialog';
+import { useRefreshOnReturn } from '@/hooks/use-refresh-on-return';
 import { DashboardLayout } from '@/layouts/dashboard-layout';
 import type { Paginated, SharedProps } from '@/types';
 
@@ -45,6 +46,8 @@ const RESULT_OPTIONS = [
 
 export default function Translations({ translations, langCounts, engineCounts, filters }: TranslationsProps) {
     const { routes } = usePage<SharedProps>().props;
+    // Back from tuning a scan in another tab: show its new "In dataset" state.
+    const onTuneOpened = useRefreshOnReturn(['translations']);
 
     const navigate = (overrides: Partial<Record<string, unknown>>) => {
         router.get(routes.translations, { ...filters, ...overrides }, { preserveState: true, preserveScroll: true, replace: true });
@@ -58,6 +61,7 @@ export default function Translations({ translations, langCounts, engineCounts, f
                 onSort: (sort, direction) => navigate({ sort, direction }),
                 onUserClick: (userId) => navigate({ user_id: userId, page: undefined }),
                 tuneUrl: (id) => `${routes.translations}/${id}/tune`,
+                onTuneOpened,
             }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [filters],
@@ -155,6 +159,7 @@ export default function Translations({ translations, langCounts, engineCounts, f
                     setSelectedId(null);
                     navigate({ user_id: userId });
                 }}
+                onTuneOpened={onTuneOpened}
             />
         </DashboardLayout>
     );

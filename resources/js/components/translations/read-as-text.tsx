@@ -96,7 +96,7 @@ export function ReadAsText({ readUrl, storedLang, stored, readableLangs, langSco
                     <p className="rounded-lg border border-destructive/40 px-3 py-2 text-sm text-destructive">{error}</p>
                 ) : (
                     <>
-                        <p className="relative rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm whitespace-pre-wrap">
+                        <p className="relative rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm whitespace-pre-wrap [overflow-wrap:anywhere]">
                             {loading && !reading && <LoaderCircle className="mr-2 inline size-4 animate-spin" />}
                             {reading ? reading.text?.trim() || <span className="text-muted-foreground">No text found</span> : loading ? 'Reading…' : null}
                         </p>

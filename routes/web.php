@@ -42,7 +42,8 @@ Route::prefix(config('braille.admin_path'))
         });
 
         Route::middleware('auth:admin')->group(function () {
-            Route::redirect('/', 'dashboard');
+            // An absolute target: a relative 'dashboard' resolves against /admin and lands on /dashboard.
+            Route::redirect('/', '/'.trim(config('braille.admin_path'), '/').'/dashboard');
             Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 
             Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
