@@ -1,5 +1,5 @@
 import type { ColumnDef } from '@tanstack/react-table';
-import { ImageIcon, MoreHorizontal, User } from 'lucide-react';
+import { ImageIcon, MoreHorizontal, SlidersHorizontal, User } from 'lucide-react';
 
 import { formatDateTime, Pill, RatingMark } from '@/components/badges';
 import { DataTableColumnHeader, type SortDirection } from '@/components/data-table/data-table-column-header';
@@ -24,6 +24,10 @@ export interface TranslationRow {
     engine: 'device' | 'server';
     rating: number | null;
     is_fav: boolean;
+    /** Where the scan is in the labeling queue, null when it is not there. */
+    label_status: 'todo' | 'done' | 'skipped' | null;
+    /** A phone scan with its photo kept on the server: it can be opened in the labeling editor. */
+    can_tune: boolean;
     user: TranslationUser | null;
     created_at: string;
 }
@@ -35,9 +39,12 @@ interface ColumnsOptions {
     direction: SortDirection;
     onSort: (key: string, direction: SortDirection) => void;
     onUserClick: (userId: number) => void;
+    tuneUrl: (translationId: number) => string;
 }
 
-export function getTranslationColumns({ sort, direction, onSort, onUserClick }: ColumnsOptions): ColumnDef<TranslationRow>[] {
+export const TUNE_HINT = 'Correct the cells on the labeling page; saving adds the scan to the dataset';
+
+export function getTranslationColumns({ sort, direction, onSort, onUserClick, tuneUrl }: ColumnsOptions): ColumnDef<TranslationRow>[] {
     return [
         {
             id: 'select',
@@ -58,7 +65,7 @@ export function getTranslationColumns({ sort, direction, onSort, onUserClick }: 
             id: 'result',
             header: 'Result',
             enableHiding: false,
-            size: 380,
+            size: 344,
             cell: ({ row }) => (
                 <div className="flex min-w-0 items-center gap-3">
                     <ScanThumb url={row.original.image_url} className="size-9" />
@@ -66,7 +73,10 @@ export function getTranslationColumns({ sort, direction, onSort, onUserClick }: 
                         <div className="truncate font-medium text-foreground">
                             {row.original.text || <span className="font-normal text-muted-foreground italic">No text found</span>}
                         </div>
-                        <div className="truncate font-mono text-xs text-muted-foreground">#{row.original.id}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                            <span className="font-mono">#{row.original.id}</span>
+                            {row.original.label_status === 'done' && <span> · In dataset</span>}
+                        </div>
                     </div>
                 </div>
             ),
@@ -110,31 +120,41 @@ export function getTranslationColumns({ sort, direction, onSort, onUserClick }: 
             id: 'actions',
             header: '',
             enableHiding: false,
-            size: 40,
-            cell: ({ row }) =>
-                row.original.user && (
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon-sm">
-                                <MoreHorizontal />
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onSelect={() => row.original.user && onUserClick(row.original.user.id)}>
-                                <User />
-                                Only this user's translations
-                            </DropdownMenuItem>
-                            {row.original.image_url && (
-                                <DropdownMenuItem asChild>
-                                    <a href={row.original.image_url} target="_blank" rel="noreferrer">
-                                        <ImageIcon />
-                                        Open photo
-                                    </a>
+            size: 76,
+            cell: ({ row }) => (
+                <div className="flex items-center justify-end gap-0.5">
+                    {row.original.can_tune && (
+                        <Button variant="ghost" size="icon-sm" asChild>
+                            <a href={tuneUrl(row.original.id)} title={`Tune. ${TUNE_HINT}`} aria-label="Tune">
+                                <SlidersHorizontal />
+                            </a>
+                        </Button>
+                    )}
+                    {row.original.user && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon-sm">
+                                    <MoreHorizontal />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem onSelect={() => row.original.user && onUserClick(row.original.user.id)}>
+                                    <User />
+                                    Only this user's translations
                                 </DropdownMenuItem>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                ),
+                                {row.original.image_url && (
+                                    <DropdownMenuItem asChild>
+                                        <a href={row.original.image_url} target="_blank" rel="noreferrer">
+                                            <ImageIcon />
+                                            Open photo
+                                        </a>
+                                    </DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+                </div>
+            ),
         },
     ];
 }

@@ -1,9 +1,12 @@
+import { SlidersHorizontal } from 'lucide-react';
+
 import { formatDateTime, Pill, RatingMark } from '@/components/badges';
 import { DetailField, DetailSection } from '@/components/data-table/detail-fields';
 import { useEntityDetail } from '@/components/data-table/use-entity-detail';
-import { ENGINE_LABELS, type TranslationRow, type TranslationUser } from '@/components/translations/columns';
+import { ENGINE_LABELS, TUNE_HINT, type TranslationRow, type TranslationUser } from '@/components/translations/columns';
 import { ReadAsText } from '@/components/translations/read-as-text';
 import { MarkedScan, ScanImage, type Cell } from '@/components/translations/scan-images';
+import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,6 +39,8 @@ interface TranslationDetail {
     detect_margin: number | null;
     readable_langs: string[];
     turn: number | null;
+    label_status: TranslationRow['label_status'];
+    can_tune: boolean;
 }
 
 interface TranslationDetailDialogProps {
@@ -75,6 +80,15 @@ export function TranslationDetailDialog({ translationId, detailUrl, onOpenChange
                                 {translation.is_fav && <Pill>favourite</Pill>}
                                 <RatingMark rating={translation.rating} />
                                 <span className="text-xs text-muted-foreground">{formatDateTime(translation.created_at)}</span>
+                                {translation.label_status === 'done' && <Pill>in dataset</Pill>}
+                                {translation.can_tune && (
+                                    <Button variant="outline" size="sm" className="ml-auto" asChild>
+                                        <a href={`${detailUrl}/tune`} title={TUNE_HINT}>
+                                            <SlidersHorizontal />
+                                            Tune
+                                        </a>
+                                    </Button>
+                                )}
                             </div>
                         </DialogHeader>
 

@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Translation;
 use App\Support\BrailleReader;
+use App\Support\LabelQueue;
 use App\Support\Sql;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
@@ -46,9 +48,10 @@ class TranslationController extends Controller
         $engine = Sql::engine();
 
         $translations = Translation::query()
-            ->with('user:id,name,email,auth_provider')
-            ->select(['id', 'user_id', 'lang', 'result', 'result_marked', 'rating', 'is_fav', 'created_at'])
+            ->with(['user:id,name,email,auth_provider', 'labelPage:id,translation_id,status'])
+            ->select(['id', 'user_id', 'lang', 'input_file', 'result', 'result_marked', 'rating', 'is_fav', 'created_at'])
             ->selectRaw("{$engine} as engine")
+            ->selectRaw(Sql::json('result_json', 'width').' as photo_width')
             ->when($request->filled('search'), function (Builder $query) use ($request) {
                 $query->where('result', 'like', '%'.$request->string('search')->trim()->value().'%');
             })
@@ -84,6 +87,11 @@ class TranslationController extends Controller
             'engine' => $translation->engine,
             'rating' => $translation->rating,
             'is_fav' => $translation->is_fav,
+            // todo, done or skipped once the scan is in the labeling queue.
+            'label_status' => $translation->labelPage?->status,
+            // A phone scan whose photo is kept here can be opened in the labeling editor.
+            'can_tune' => $translation->labelPage !== null
+                || ($translation->engine === 'device' && $translation->storedPhotoPath() !== null && (int) $translation->photo_width > 0),
             'user' => $translation->user ? [
                 'id' => $translation->user->id,
                 'name' => $translation->user->name,
@@ -173,7 +181,38 @@ class TranslationController extends Controller
             'detect_margin' => isset($meta['lang_guess']['margin']) ? (float) $meta['lang_guess']['margin'] : null,
             'readable_langs' => $device && ! empty($meta['cells']) ? self::READABLE_LANGS : [],
             'turn' => $meta['turn'] ?? null,
+            'label_status' => $translation->labelPage?->status,
+            'can_tune' => $translation->labelPage !== null || LabelQueue::labelable($translation),
         ]]);
+    }
+
+    /**
+     * Opens the scan in the labeling editor to correct its cells, putting it
+     * in the queue first when the daily labels:queue has not yet. Saving it
+     * there marks it done, which is what puts a page in the dataset.
+     */
+    public function tune(Request $request, Translation $translation): RedirectResponse
+    {
+        $page = $translation->labelPage;
+        if ($page === null) {
+            // Only scans read on the phone, with their photo kept here, can be labeled.
+            abort_unless(LabelQueue::labelable($translation), 404);
+            $page = LabelQueue::add($translation);
+        }
+
+        // Back to the list as it was (filters, page) once the page is saved.
+        $back = url()->previous();
+
+        return redirect()->route('admin.labeling', [
+            'page' => $page->id,
+            'return' => self::isListUrl($back) ? $back : route('admin.translations'),
+        ]);
+    }
+
+    /** The translations list on this server, with any filters: the only place Tune goes back to. */
+    public static function isListUrl(string $url): bool
+    {
+        return explode('?', $url, 2)[0] === route('admin.translations');
     }
 
     /**

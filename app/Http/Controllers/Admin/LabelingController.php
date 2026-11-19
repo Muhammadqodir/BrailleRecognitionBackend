@@ -30,9 +30,12 @@ class LabelingController extends Controller
     public function index(Request $request): Response
     {
         $start = $request->integer('page') ?: $this->nextId();
+        // Opened with Tune from the translations list: go back there once the page is saved.
+        $return = $request->string('return')->value();
 
         return Inertia::render('labeling', [
             'startId' => $start,
+            'returnUrl' => $start && TranslationController::isListUrl($return) ? $return : null,
             'stats' => $this->stats(),
             'skipReasons' => LabelPage::SKIP_REASONS,
             'tagNames' => LabelPage::TAGS,

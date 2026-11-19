@@ -1,4 +1,4 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Check, ChevronDown, Eye, EyeOff, Keyboard, LoaderCircle, Maximize, Redo2, RotateCw, ScanSearch, Sparkles, Trash2, Undo2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
@@ -46,6 +46,8 @@ interface Stats {
 
 interface LabelingProps {
     startId: number | null;
+    /** The translations list the start page was opened from with Tune: saving or skipping it goes back there. */
+    returnUrl: string | null;
     stats: Stats;
     skipReasons: string[];
     tagNames: string[];
@@ -190,13 +192,15 @@ function startCells(rows: number[][], suggestions: Suggestion[], firstId: number
     return cells;
 }
 
-export default function Labeling({ startId, stats: initialStats, skipReasons, tagNames, langs, classifierUrl, detectorUrl, readerInstalled }: LabelingProps) {
+export default function Labeling({ startId, returnUrl, stats: initialStats, skipReasons, tagNames, langs, classifierUrl, detectorUrl, readerInstalled }: LabelingProps) {
     const { routes } = usePage<SharedProps>().props;
     const [pageId, setPageId] = useState<number | null>(startId);
     const [page, setPage] = useState<PageData | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [stats, setStats] = useState(initialStats);
+    /** Opened with Tune and still on that page. */
+    const tuning = returnUrl !== null && pageId === startId;
     const [cells, setCells] = useState<LabelCell[]>([]);
     /** The cells the page opened with, and the turn they are in. */
     const initialCells = useRef<LabelCell[]>([]);
@@ -389,8 +393,8 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
     };
 
     useEffect(() => {
-        if (pageId) window.history.replaceState(null, '', `${routes.labeling}?page=${pageId}`);
-    }, [pageId, routes.labeling]);
+        if (pageId) window.history.replaceState(null, '', `${routes.labeling}?page=${pageId}${tuning ? `&return=${encodeURIComponent(returnUrl)}` : ''}`);
+    }, [pageId, routes.labeling, tuning, returnUrl]);
 
     /** The turned photo's size: the cells' coordinate space. */
     const frame = page ? turnedSize(page.width, page.height, rotation) : { w: 1000, h: 1000 };
@@ -758,6 +762,10 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             setDirty(false);
             setStats(result.stats);
             setNotice(null);
+            if (tuning) {
+                router.visit(returnUrl);
+                return;
+            }
             setPageId(result.next_id);
             if (!result.next_id) setPage(null);
         } catch (e) {
@@ -766,7 +774,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             setSaving(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page, cells, ordered, saving, touch, tags, rotation]);
+    }, [page, cells, ordered, saving, touch, tags, rotation, tuning, returnUrl]);
 
     const skip = async (reason: string) => {
         if (!page) return;
@@ -776,6 +784,10 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             clearDraft(page.id);
             setDirty(false);
             setStats(result.stats);
+            if (tuning) {
+                router.visit(returnUrl);
+                return;
+            }
             setPageId(result.next_id);
             if (!result.next_id) setPage(null);
         } catch (e) {
@@ -904,10 +916,19 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
 
     const actions = (
         <div className="flex items-center gap-1.5">
-            <Button variant="ghost" size="sm" disabled={!page?.prev_id} onClick={() => page?.prev_id && setPageId(page.prev_id)} title="The page labeled before this one">
-                <ArrowLeft />
-                Previous
-            </Button>
+            {tuning ? (
+                <Button variant="ghost" size="sm" asChild>
+                    <a href={returnUrl} title="Back to the translations list without saving">
+                        <ArrowLeft />
+                        Translations
+                    </a>
+                </Button>
+            ) : (
+                <Button variant="ghost" size="sm" disabled={!page?.prev_id} onClick={() => page?.prev_id && setPageId(page.prev_id)} title="The page labeled before this one">
+                    <ArrowLeft />
+                    Previous
+                </Button>
+            )}
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm" disabled={!page}>
@@ -925,7 +946,7 @@ export default function Labeling({ startId, stats: initialStats, skipReasons, ta
             </DropdownMenu>
             <Button size="sm" disabled={!page || saving} onClick={() => void save()}>
                 {saving ? <LoaderCircle className="animate-spin" /> : <Check />}
-                Save &amp; next
+                {tuning ? 'Save to dataset' : <>Save &amp; next</>}
             </Button>
         </div>
     );

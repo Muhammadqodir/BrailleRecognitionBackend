@@ -33,17 +33,11 @@ class QueueLabelPages extends Command
                     if ($queued->has($translation->id)) {
                         continue;
                     }
-                    [$cells, $width, $height] = LabelQueue::modelCells($translation);
+                    [, $width, $height] = LabelQueue::modelCells($translation);
                     if ($width <= 0 || $height <= 0) {
                         continue;
                     }
-                    $score = LabelQueue::score($cells, []);
-                    LabelPage::create([
-                        'translation_id' => $translation->id,
-                        'split' => LabelQueue::split((int) $translation->user_id),
-                        'priority' => $score['priority'],
-                        'issues' => $score['issues'],
-                    ]);
+                    LabelQueue::add($translation);
                     $added++;
                 }
             });

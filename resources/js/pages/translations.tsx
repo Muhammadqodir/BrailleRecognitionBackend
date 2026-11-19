@@ -57,6 +57,7 @@ export default function Translations({ translations, langCounts, engineCounts, f
                 direction: filters.direction,
                 onSort: (sort, direction) => navigate({ sort, direction }),
                 onUserClick: (userId) => navigate({ user_id: userId, page: undefined }),
+                tuneUrl: (id) => `${routes.translations}/${id}/tune`,
             }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
         [filters],

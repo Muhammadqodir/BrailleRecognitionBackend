@@ -39,6 +39,27 @@ class LabelQueue
         return $mod === 0 ? 'test' : 'train';
     }
 
+    /** Whether a scan can be labeled: read on the phone, its photo kept here, the photo's size known. */
+    public static function labelable(Translation $translation): bool
+    {
+        [, $width, $height] = self::modelCells($translation);
+        $meta = json_decode((string) $translation->result_json, true);
+
+        return $translation->storedPhotoPath() !== null && ($meta['engine'] ?? null) === 'device' && $width > 0 && $height > 0;
+    }
+
+    /** The scan's page in the queue, added and scored now if it is not there yet. */
+    public static function add(Translation $translation): LabelPage
+    {
+        $score = self::score(self::modelCells($translation)[0], []);
+
+        return LabelPage::createOrFirst(['translation_id' => $translation->id], [
+            'split' => self::split((int) $translation->user_id),
+            'priority' => $score['priority'],
+            'issues' => $score['issues'],
+        ]);
+    }
+
     /** @return array{0: list<list<float>>, 1: int, 2: int} the phone's cells, photo width and height */
     public static function modelCells(Translation $translation): array
     {

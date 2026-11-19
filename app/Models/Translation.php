@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Storage;
 
 class Translation extends Model
@@ -82,6 +83,12 @@ class Translation extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /** The scan's page in the labeling queue, if it is there. */
+    public function labelPage(): HasOne
+    {
+        return $this->hasOne(LabelPage::class);
     }
 
     /**

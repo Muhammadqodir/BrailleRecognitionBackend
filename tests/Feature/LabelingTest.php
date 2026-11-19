@@ -207,4 +207,55 @@ class LabelingTest extends TestCase
             $this->assertSame($mod === 0 ? 'test' : 'train', LabelQueue::split($id), "user {$id}");
         }
     }
+
+    public function test_tune_opens_a_scan_on_the_labeling_page_and_saving_it_adds_it_to_the_dataset(): void
+    {
+        $scan = $this->scan($this->cells(4, 0.3), 'tune');
+        $list = route('admin.translations', ['lang' => ['EN'], 'page' => 2]);
+
+        $row = fn () => $this->actingAs($this->admin, 'admin')->get(route('admin.translations'))
+            ->assertInertia(fn (Assert $page) => $page->component('translations'))
+            ->viewData('page')['props']['translations']['data'][0];
+        $this->assertTrue($row()['can_tune']);
+        $this->assertNull($row()['label_status']);
+
+        // Not queued yet (labels:queue runs once a day): Tune adds it, scored like the queue would.
+        $this->actingAs($this->admin, 'admin')->get(route('admin.translations.tune', $scan), ['Referer' => $list])
+            ->assertRedirect(route('admin.labeling', ['page' => LabelPage::sole()->id, 'return' => $list]));
+        $page = LabelPage::sole();
+        $this->assertSame($scan->id, $page->translation_id);
+        $this->assertSame('todo', $page->fresh()->status);
+        $this->assertSame(4, $page->issues['unsure']);
+        $this->assertSame(LabelQueue::split($scan->user_id), $page->split);
+
+        // Again, or after the daily queue ran: the same page, nothing added.
+        $this->actingAs($this->admin, 'admin')->get(route('admin.translations.tune', $scan))
+            ->assertRedirect(route('admin.labeling', ['page' => $page->id, 'return' => route('admin.translations')]));
+        $this->artisan('labels:queue')->assertSuccessful();
+        $this->assertSame(1, LabelPage::count());
+
+        $this->actingAs($this->admin, 'admin')->get(route('admin.labeling', ['page' => $page->id, 'return' => $list]))
+            ->assertInertia(fn (Assert $p) => $p->where('startId', $page->id)->where('returnUrl', $list));
+
+        $this->actingAs($this->admin, 'admin')->putJson(route('admin.labeling.save', $page), ['cells' => [[10, 10, 24, 30, 3]]])->assertOk();
+        $this->assertSame('done', $page->fresh()->status);
+        $this->assertSame('done', $row()['label_status']);
+    }
+
+    public function test_tune_needs_a_phone_scan_with_its_photo_and_return_stays_on_the_list(): void
+    {
+        $user = User::factory()->create();
+        $server = Translation::create(['user_id' => $user->id, 'lang' => 'EN', 'input_file' => 'results/x.jpg', 'result_marked' => 'results/x_marked.jpg', 'result_json' => '{}']);
+
+        $this->actingAs($this->admin, 'admin')->get(route('admin.translations'))
+            ->assertInertia(fn (Assert $page) => $page->where('translations.data.0.can_tune', false));
+        $this->actingAs($this->admin, 'admin')->get(route('admin.translations.tune', $server))->assertNotFound();
+        $this->assertSame(0, LabelPage::count());
+
+        $page = LabelQueue::add($this->scan($this->cells(3)));
+        foreach (['https://evil.example/', route('admin.dataset'), '/translations', route('admin.translations.tune', $page->translation_id)] as $return) {
+            $this->actingAs($this->admin, 'admin')->get(route('admin.labeling', ['page' => $page->id, 'return' => $return]))
+                ->assertInertia(fn (Assert $p) => $p->where('returnUrl', null));
+        }
+    }
 }

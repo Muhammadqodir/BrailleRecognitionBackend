@@ -51,6 +51,7 @@ Route::prefix(config('braille.admin_path'))
             Route::get('translations', [TranslationController::class, 'index'])->name('translations');
             Route::get('translations/{translation}', [TranslationController::class, 'show'])->name('translations.show');
             Route::get('translations/{translation}/read', [TranslationController::class, 'read'])->name('translations.read');
+            Route::get('translations/{translation}/tune', [TranslationController::class, 'tune'])->name('translations.tune');
             Route::get('subscriptions', [SubscriptionController::class, 'index'])->name('subscriptions');
 
             Route::get('dataset', [DatasetController::class, 'index'])->name('dataset');
